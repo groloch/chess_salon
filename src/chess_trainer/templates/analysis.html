@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Chess Trainer – Analysis Board{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/chessground.base.css" />
+<link rel="stylesheet" href="/static/css/chessground.brown.css" />
+<link rel="stylesheet" href="/static/css/chessground.cburnett.css" />
+<link rel="stylesheet" href="/static/css/board.css" />
+{% endblock %}
+
+{% block content %}
+<div class="board-area">
+  <div class="board-column">
+    <div id="board"></div>
+    <div class="controls">
+      <button id="btn-reset">Reset</button>
+      <button id="btn-flip">↕ Flip</button>
+    </div>
+    <div class="controls" style="margin-top:.5rem;">
+      <input id="fen-input" placeholder="Paste FEN to load a position…" />
+      <button id="btn-fen">Load FEN</button>
+    </div>
+  </div>
+  <div id="movelist"></div>
+</div>
+
+<script type="module">
+  import { initBoard } from '/static/js/board.js';
+  initBoard();
+</script>
+{% endblock %}

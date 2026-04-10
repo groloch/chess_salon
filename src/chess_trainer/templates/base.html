@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Chess Trainer{% endblock %}</title>
+  <style>
+    :root {
+      --bg: #1a1a2e;
+      --surface: #16213e;
+      --primary: #0f3460;
+      --accent: #e94560;
+      --text: #eee;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    header {
+      background: var(--surface);
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,.4);
+    }
+    header h1 { font-size: 1.4rem; }
+    header nav a {
+      color: var(--text);
+      text-decoration: none;
+      padding: .4rem .8rem;
+      border-radius: 4px;
+      transition: background .2s;
+    }
+    header nav a:hover { background: var(--primary); }
+    main { padding: 2rem; }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <header>
+    <h1>Chess Trainer</h1>
+    <nav>
+      <a href="/">Menu</a>
+      <a href="/analysis">Analysis Board</a>
+      <a href="/blind_puzzles">Blindfold Puzzles</a>
+      <a href="/openings">Openings Trainer</a>
+    </nav>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

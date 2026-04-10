@@ -1,0 +1,87 @@
+/* Shared board-page layout – used by analysis, blind_puzzles, openings */
+
+.board-area {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  margin-top: 2rem;
+  align-items: flex-start;
+}
+.board-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+#board {
+  width: 720px;
+  height: 720px;
+}
+
+/* ── move list ─────────────────────────────────────────────────── */
+#movelist {
+  width: 240px;
+  height: 720px;
+  background: var(--surface);
+  border: 1px solid #333;
+  border-radius: 6px;
+  overflow-y: auto;
+  padding: .6rem;
+  font-family: monospace;
+  font-size: .95rem;
+  line-height: 1.6;
+}
+#movelist .move-row {
+  display: flex;
+  gap: .3rem;
+  align-items: baseline;
+}
+#movelist .move-number {
+  color: #777;
+  min-width: 2.2rem;
+  text-align: right;
+  margin-right: .3rem;
+}
+#movelist .move {
+  padding: .1rem .35rem;
+  border-radius: 3px;
+  cursor: default;
+}
+#movelist .move.current {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* ── controls ──────────────────────────────────────────────────── */
+.controls {
+  display: flex;
+  gap: .5rem;
+}
+.controls button {
+  padding: .5rem 1rem;
+  background: var(--primary);
+  color: var(--text);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: .95rem;
+  transition: background .2s;
+}
+.controls button:hover {
+  background: var(--accent);
+}
+
+#status {
+  font-size: 1.05rem;
+  min-height: 1.5rem;
+}
+
+#fen-input {
+  width: 480px;
+  padding: .4rem .6rem;
+  border: 1px solid #555;
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: monospace;
+}

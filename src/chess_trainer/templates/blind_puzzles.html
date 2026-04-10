@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Chess Trainer – Blindfold Puzzles{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/chessground.base.css" />
+<link rel="stylesheet" href="/static/css/chessground.brown.css" />
+<link rel="stylesheet" href="/static/css/chessground.cburnett.css" />
+<link rel="stylesheet" href="/static/css/board.css" />
+{% endblock %}
+
+{% block content %}
+<div class="board-area">
+  <div class="board-column">
+    <div id="board"></div>
+  </div>
+  <div id="movelist"></div>
+</div>
+
+<script type="module">
+  import { initBoard } from '/static/js/board.js';
+  initBoard();
+</script>
+{% endblock %}
