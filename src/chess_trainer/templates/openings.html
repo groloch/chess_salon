@@ -26,6 +26,9 @@
 
 <script type="module">
   import { initBoard } from '/static/js/board.js';
-  initBoard();
+  initBoard({
+    boardId: 'openings',
+    animation: { enabled: true }
+  });
 </script>
 {% endblock %}
