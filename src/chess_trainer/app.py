@@ -2,7 +2,7 @@
 
 from flask import Flask, jsonify, render_template, request
 
-from .board_logic import ChessBoard
+from .boards import ChessBoard
 
 app = Flask(__name__)
 
@@ -42,9 +42,9 @@ def _get_board(board_id: str = "default") -> ChessBoard:
     return _boards[board_id]
 
 
-@app.route("/api/board", methods=["GET"])
-def api_get_board():
-    board = _get_board()
+@app.route("/api/board/<string:board_id>", methods=["GET"])
+def api_get_board(board_id: str):
+    board = _get_board(board_id)
     return jsonify(
         fen=board.fen,
         turn=board.turn,
@@ -56,18 +56,19 @@ def api_get_board():
     )
 
 
-@app.route("/api/move", methods=["POST"])
-def api_move():
+@app.route("/api/move/<string:board_id>", methods=["POST"])
+def api_move(board_id: str):
     data = request.get_json(force=True)
     uci = data.get("uci", "")
     from_ply = data.get("from_ply", None)
-    board = _get_board()
+    board = _get_board(board_id)
     if from_ply is not None:
         board.truncate_to_ply(int(from_ply))
-    ok = board.push_move(uci)
+    is_legal, is_correct = board.push_move(uci)
     ply = board.total_plies
     return jsonify(
-        ok=ok,
+        is_legal=is_legal,
+        is_correct=is_correct,
         fen=board.fen,
         turn=board.turn,
         legal_moves=board.legal_moves(),
@@ -79,18 +80,18 @@ def api_move():
     )
 
 
-@app.route("/api/goto/<int:ply>", methods=["GET"])
-def api_goto(ply: int):
-    board = _get_board()
+@app.route("/api/goto/<string:board_id>/<int:ply>", methods=["GET"])
+def api_goto(board_id: str, ply: int):
+    board = _get_board(board_id)
     pos = board.position_at_ply(ply)
     pos["moves"] = board.move_history
     pos["total_plies"] = board.total_plies
     return jsonify(**pos)
 
 
-@app.route("/api/undo", methods=["POST"])
-def api_undo():
-    board = _get_board()
+@app.route("/api/undo/<string:board_id>", methods=["POST"])
+def api_undo(board_id: str):
+    board = _get_board(board_id)
     undone = board.undo()
     return jsonify(
         undone=undone,
@@ -104,9 +105,9 @@ def api_undo():
     )
 
 
-@app.route("/api/reset", methods=["POST"])
-def api_reset():
-    board = _get_board()
+@app.route("/api/reset/<string:board_id>", methods=["POST"])
+def api_reset(board_id: str):
+    board = _get_board(board_id)
     board.reset()
     return jsonify(
         fen=board.fen,
@@ -119,11 +120,11 @@ def api_reset():
     )
 
 
-@app.route("/api/fen", methods=["POST"])
-def api_set_fen():
+@app.route("/api/fen/<string:board_id>", methods=["POST"])
+def api_set_fen(board_id: str):
     data = request.get_json(force=True)
     fen = data.get("fen", "")
-    board = _get_board()
+    board = _get_board(board_id)
     try:
         board.set_fen(fen)
     except ValueError:
@@ -138,9 +139,3 @@ def api_set_fen():
         result=board.result,
         moves=board.move_history,
     )
-
-
-@app.route("/api/legal_moves/<square>", methods=["GET"])
-def api_legal_moves_for_square(square: str):
-    board = _get_board()
-    return jsonify(destinations=board.legal_moves_for_square(square))

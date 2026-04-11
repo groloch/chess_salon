@@ -1,0 +1,3 @@
+from . import ChessBoard
+
+pass

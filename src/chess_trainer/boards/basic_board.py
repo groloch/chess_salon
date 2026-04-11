@@ -1,5 +1,3 @@
-"""Chess board logic wrapper around the python-chess library."""
-
 import chess
 
 
@@ -71,15 +69,6 @@ class ChessBoard:
         """Return all legal moves in UCI notation (e.g. 'e2e4')."""
         return [move.uci() for move in self.board.legal_moves]
 
-    def legal_moves_for_square(self, square: str) -> list[str]:
-        """Return legal destination squares for a given origin square."""
-        sq = chess.parse_square(square)
-        return [
-            chess.square_name(move.to_square)
-            for move in self.board.legal_moves
-            if move.from_square == sq
-        ]
-
     def is_legal(self, uci_move: str) -> bool:
         """Check whether a UCI move string is legal in the current position."""
         try:
@@ -88,12 +77,20 @@ class ChessBoard:
             return False
         return move in self.board.legal_moves
 
-    def push_move(self, uci_move: str) -> bool:
-        """Play a move given in UCI notation. Returns True on success."""
-        if not self.is_legal(uci_move):
-            return False
-        self.board.push(chess.Move.from_uci(uci_move))
+    def is_correct(self, uci_move: str) -> bool:
+        """Check whether a UCI move string is the expected correct move."""
         return True
+
+    def push_move(self, uci_move: str) -> tuple[bool, bool]:
+        """Attempts to play a move given in UCI notation.
+        Returns a tuple (is_legal, is_correct).
+        """
+        if not self.is_legal(uci_move):
+            return False, True
+        if not self.is_correct(uci_move):
+            return True, False
+        self.board.push(chess.Move.from_uci(uci_move))
+        return True, True
 
     def undo(self) -> str | None:
         """Undo the last move. Returns the undone move in UCI or None."""

@@ -9,13 +9,13 @@ function uci(orig, dest, prom) {
   return orig + dest + (prom || '');
 }
 
-export async function fetchBoard() {
-  const r = await fetch('/api/board');
+export async function fetchBoard(boardId) {
+  const r = await fetch(`/api/board/${boardId}`);
   return r.json();
 }
 
-export async function sendMove(orig, dest, prom, fromPly) {
-  const r = await fetch('/api/move', {
+export async function sendMove(boardId, orig, dest, prom, fromPly) {
+  const r = await fetch(`/api/move/${boardId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ uci: uci(orig, dest, prom), from_ply: fromPly }),
@@ -23,27 +23,22 @@ export async function sendMove(orig, dest, prom, fromPly) {
   return r.json();
 }
 
-export async function sendGoto(ply) {
-  const r = await fetch(`/api/goto/${ply}`);
+export async function sendGoto(boardId, ply) {
+  const r = await fetch(`/api/goto/${boardId}/${ply}`);
   return r.json();
 }
 
-export async function sendReset() {
-  const r = await fetch('/api/reset', { method: 'POST' });
+export async function sendReset(boardId) {
+  const r = await fetch(`/api/reset/${boardId}`, { method: 'POST' });
   return r.json();
 }
 
-export async function sendFen(fen) {
-  const r = await fetch('/api/fen', {
+export async function sendFen(boardId, fen) {
+  const r = await fetch(`/api/fen/${boardId}`, {
+
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ fen }),
   });
   return r.json();
-}
-
-export async function fetchDestsForSquare(square) {
-  const r = await fetch(`/api/legal_moves/${square}`);
-  const data = await r.json();
-  return data.destinations;
 }

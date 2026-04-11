@@ -131,6 +131,7 @@ function showPromotionDialog(boardEl, dest, color, orientation, callback) {
 // ── public entry-point ───────────────────────────────────────────
 
 export async function initBoard(opts = {}) {
+  const boardId = opts.boardId || 'default';
   const boardEl    = opts.boardEl    ?? document.getElementById('board');
   const movelistEl = opts.movelistEl ?? document.getElementById('movelist');
   const fenInputEl = opts.fenInputEl ?? document.getElementById('fen-input');
@@ -195,19 +196,36 @@ export async function initBoard(opts = {}) {
     renderMoveList(data.moves || []);
   }
 
-  function navigatePly(delta) {
+  function navigatePly(boardId, delta) {
     if (boardEl.cancelPromotion) {
       boardEl.cancelPromotion();
       return;
     }
     const target = currentPly + delta;
     if (target < 0 || target > totalPlies) return;
-    sendGoto(target).then(syncBoard);
+    sendGoto(boardId, target).then(syncBoard);
+  }
+
+  function attemptMove(orig, dest, prom) {
+    return sendMove(boardId, orig, dest, prom, currentPly)
+      .then(response => response.json())
+      .then(data => {
+        if(data.is_legal === false){
+          // TODO handle illegal move
+        }else if(data.is_correct === false){
+          // TODO handle incorrect move
+        }
+      })
+      .then(syncBoard)
+      .catch(() => {
+      sendGoto(boardId, currentPly).then(syncBoard);
+      }
+    );
   }
 
   // ── initialise chessground ───────────────────────────────────
 
-  const data = await fetchBoard();
+  const data = await fetchBoard(boardId);
   currentLegalMoves = data.legal_moves || [];
   currentTurnColor = data.turn;
   const dests = destsFromLegal(currentLegalMoves);
@@ -232,17 +250,13 @@ export async function initBoard(opts = {}) {
             showPromotionDialog(boardEl, dest, currentTurnColor, orientation, (prom) => {
               if (!prom) {
                 // Cancelled
-                sendGoto(currentPly).then(syncBoard);
+                sendGoto(boardId, currentPly).then(syncBoard);
               } else {
-                sendMove(orig, dest, prom, currentPly).then(syncBoard).catch(() => {
-                  sendGoto(currentPly).then(syncBoard);
-                });
+                attemptMove(orig, dest, prom);
               }
             });
           } else {
-            sendMove(orig, dest, '', currentPly).then(syncBoard).catch(() => {
-              sendGoto(currentPly).then(syncBoard);
-            });
+            attemptMove(orig, dest, null)
           }
         },
       },
@@ -264,14 +278,14 @@ export async function initBoard(opts = {}) {
 
   if (btnResetEl) {
     btnResetEl.addEventListener('click', () => {
-      sendReset().then(syncBoard);
+      sendReset(boardId).then(syncBoard);
     });
   }
 
   if (btnFenEl && fenInputEl) {
     btnFenEl.addEventListener('click', () => {
       const fen = fenInputEl.value.trim();
-      if (fen) sendFen(fen).then(syncBoard);
+      if (fen) sendFen(boardId, fen).then(syncBoard);
     });
   }
 
@@ -279,8 +293,8 @@ export async function initBoard(opts = {}) {
 
   if (opts.enableKeyboard !== false) {
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowRight') { e.preventDefault(); navigatePly(1);  }
-      else if (e.key === 'ArrowLeft')  { e.preventDefault(); navigatePly(-1); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); navigatePly(boardId, 1);  }
+      else if (e.key === 'ArrowLeft')  { e.preventDefault(); navigatePly(boardId, -1); }
     });
   }
 
@@ -290,7 +304,7 @@ export async function initBoard(opts = {}) {
     boardEl.addEventListener('wheel', (e) => {
       e.preventDefault();
       if (Math.abs(e.deltaY) < 4) return;
-      navigatePly(e.deltaY > 0 ? 1 : -1);
+      navigatePly(boardId, e.deltaY > 0 ? 1 : -1);
     }, { passive: false });
   }
 
