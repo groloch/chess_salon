@@ -63,7 +63,7 @@ class BlindfoldPuzzleChessBoard(ChessBoard):
 
         else:
             for _ in range(2):
-                self.board.push(chess.Move.from_uci(uci_move))
+                self.board.push(chess.Move.from_uci(self.solution[self.current_puzzle_ply]))
                 self.current_puzzle_ply += 1
             return True, True
 
