@@ -238,6 +238,7 @@ export async function initBoard(opts = {}) {
     fen: data.fen,
     orientation,
     turnColor: data.turn,
+    animation: opts.animation,
     movable: {
       color: data.turn,
       free: false,
@@ -310,5 +311,5 @@ export async function initBoard(opts = {}) {
   }
 
   // Return a handle so pages can extend behaviour if needed.
-  return { ground, syncBoard, navigatePly };
+  return { ground, syncBoard, navigatePly, attemptMove };
 }

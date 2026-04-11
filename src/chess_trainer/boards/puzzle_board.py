@@ -14,7 +14,7 @@ class BlindfoldPuzzleConfig:
 
 
 class BlindfoldPuzzleChessBoard(ChessBoard):
-    def __init__(self, client : Client, config: BlindfoldPuzzleConfig):
+    def __init__(self, client : Client, config: BlindfoldPuzzleConfig = BlindfoldPuzzleConfig(), **kwargs):
         super().__init__()
 
         self.client: Client = client
@@ -37,8 +37,8 @@ class BlindfoldPuzzleChessBoard(ChessBoard):
 
         blind_moves = movelist[-self.config.blindfold_depth:]
         fen = board.fen()
-
         self.board = chess.Board(fen)
+        self.start_fen = fen
 
         for move in blind_moves:
             self.board.push_san(move)
@@ -66,3 +66,6 @@ class BlindfoldPuzzleChessBoard(ChessBoard):
                 self.board.push(chess.Move.from_uci(uci_move))
                 self.current_puzzle_ply += 1
             return True, True
+
+    def push_move_at_ply(self, uci_move, from_ply = None):
+        return self.push_move(uci_move)

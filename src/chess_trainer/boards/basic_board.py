@@ -4,8 +4,10 @@ import chess
 class ChessBoard:
     """Manages a chess board state and exposes legal-move helpers."""
 
-    def __init__(self, fen: str | None = None):
+    def __init__(self, fen: str | None = None, **kwargs):
         self.board = chess.Board(fen) if fen else chess.Board()
+
+        self.start_fen = self.board.fen()
 
     @property
     def fen(self) -> str:
@@ -33,7 +35,7 @@ class ChessBoard:
     def move_history(self) -> list[dict]:
         """Return the full move history as a list of {uci, san, ply} dicts."""
         moves: list[dict] = []
-        tmp = chess.Board()
+        tmp = chess.Board(self.start_fen)
         for i, move in enumerate(self.board.move_stack):
             san = tmp.san(move)
             moves.append({"uci": move.uci(), "san": san, "ply": i})
@@ -47,7 +49,7 @@ class ChessBoard:
     def position_at_ply(self, ply: int) -> dict:
         """Return board info at a given ply without modifying the move stack."""
         ply = max(0, min(ply, self.total_plies))
-        tmp = chess.Board()
+        tmp = chess.Board(self.start_fen)
         for move in list(self.board.move_stack)[:ply]:
             tmp.push(move)
         return {
@@ -92,6 +94,14 @@ class ChessBoard:
         self.board.push(chess.Move.from_uci(uci_move))
         return True, True
 
+    def push_move_at_ply(self, uci_move: str, from_ply: int | None = None) -> tuple[bool, bool]:
+        """Attempts to play a move at a given ply. If from_ply is None, defaults to current position.
+        Returns a tuple (is_legal, is_correct).
+        """
+        if from_ply is not None:
+            self.truncate_to_ply(from_ply)
+        return self.push_move(uci_move)
+
     def undo(self) -> str | None:
         """Undo the last move. Returns the undone move in UCI or None."""
         try:
@@ -103,7 +113,9 @@ class ChessBoard:
     def reset(self) -> None:
         """Reset to starting position."""
         self.board.reset()
+        self.start_fen = self.board.fen()
 
     def set_fen(self, fen: str) -> None:
         """Load an arbitrary FEN position."""
         self.board.set_fen(fen)
+        self.start_fen = fen
