@@ -206,7 +206,7 @@ export async function initBoard(opts = {}) {
     sendGoto(boardId, target).then(syncBoard);
   }
 
-  function attemptMove(orig, dest, prom) {
+  function attemptMove(orig, dest, prom, skipSync = false) {
     return sendMove(boardId, orig, dest, prom, currentPly)
       .then(data => {
         if(data.is_legal === false){
@@ -216,7 +216,10 @@ export async function initBoard(opts = {}) {
         }
         return data;
       })
-      .then(syncBoard)
+      .then(data => {
+        if (!skipSync) syncBoard(data);
+        return data;
+      })
       .catch((err) => {
         console.error(err);
         sendGoto(boardId, currentPly).then(syncBoard);
