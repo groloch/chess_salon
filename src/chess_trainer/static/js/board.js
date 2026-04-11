@@ -208,17 +208,18 @@ export async function initBoard(opts = {}) {
 
   function attemptMove(orig, dest, prom) {
     return sendMove(boardId, orig, dest, prom, currentPly)
-      .then(response => response.json())
       .then(data => {
         if(data.is_legal === false){
           // TODO handle illegal move
         }else if(data.is_correct === false){
           // TODO handle incorrect move
         }
+        return data;
       })
       .then(syncBoard)
-      .catch(() => {
-      sendGoto(boardId, currentPly).then(syncBoard);
+      .catch((err) => {
+        console.error(err);
+        sendGoto(boardId, currentPly).then(syncBoard);
       }
     );
   }
