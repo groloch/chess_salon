@@ -13,7 +13,8 @@ class ChessApp:
         self._boards: dict[str, ChessBoard] = {}
         self._setup_routes()
 
-        self.session = TokenSession(dotenv.get_key(".env", "LICHESS_TOKEN"))
+        self.token = dotenv.get_key(".env", "LICHESS_TOKEN")
+        self.session = TokenSession(self.token)
         self.client = Client(self.session)
 
     def _setup_routes(self):
@@ -53,7 +54,10 @@ class ChessApp:
 
     def _get_board(self, board_id: str = "default") -> ChessBoard:
         if board_id not in self._boards:
-            self._boards[board_id] = board_mapping.get(board_id, ChessBoard)(client=self.client)
+            self._boards[board_id] = board_mapping.get(board_id, ChessBoard)(
+                client=self.client,
+                token=self.token
+            )
         return self._boards[board_id]
 
     def api_get_board(self, board_id: str):
