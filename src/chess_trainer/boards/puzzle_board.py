@@ -95,7 +95,7 @@ class BlindfoldPuzzleChessBoard(ChessBoard):
             if correct:
                 if self.current_puzzle_ply >= len(self.solution) - 2:
                     self.notify_puzzle_completed(puzzle_id=self.current_puzzle_id, win=True)
-                    self.fetch_next_puzzle()
+                    self.solution, self.rating, self.current_puzzle_id = self.fetch_next_puzzle()
                     completed = True
                     win = True
                 else:
@@ -104,7 +104,7 @@ class BlindfoldPuzzleChessBoard(ChessBoard):
                         self.current_puzzle_ply += 1
             else:
                 self.notify_puzzle_completed(puzzle_id=self.current_puzzle_id, win=False)
-                self.fetch_next_puzzle()
+                self.solution, self.rating, self.current_puzzle_id = self.fetch_next_puzzle()
                 completed = True
                 win = False
 

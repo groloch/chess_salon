@@ -36,9 +36,14 @@ class ChessBoard:
         '''Return the full move history as a list of {uci, san, ply} dicts.'''
         moves: list[dict] = []
         tmp = chess.Board(self.start_fen)
+        if tmp.turn == chess.BLACK:
+            moves.append({'uci': None, 'san': '...', 'ply': 0})
+            offset = 1
+        else:
+            offset = 0
         for i, move in enumerate(self.board.move_stack):
             san = tmp.san(move)
-            moves.append({'uci': move.uci(), 'san': san, 'ply': i})
+            moves.append({'uci': move.uci(), 'san': san, 'ply': i + offset})
             tmp.push(move)
         return moves
 
