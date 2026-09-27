@@ -1,7 +1,10 @@
 import sys
+import sqlite3
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from datetime import datetime, timedelta, timezone
+import io
 from pathlib import Path
 from unittest.mock import patch
 
@@ -13,7 +16,11 @@ from chess_trainer.boards.puzzle_board import (  # noqa: E402
     BlindfoldPuzzleChessBoard,
     BlindfoldPuzzleConfig,
 )
-from chess_trainer.puzzle_history import PuzzleHistoryStore  # noqa: E402
+from chess_trainer.puzzle_history import (  # noqa: E402
+    SCHEMA_VERSION,
+    PuzzleHistoryStore,
+    main as puzzle_history_main,
+)
 
 
 class FakePuzzleClient:
@@ -75,6 +82,82 @@ class PuzzleHistoryStoreTests(unittest.TestCase):
         self.assertEqual(stats['black_successes'], 2)
         self.assertEqual(stats['black_success_rate'], 100.0)
         self.assertEqual(stats['average_solve_time_ms'], 0)
+
+    def test_migrates_legacy_database_to_current_schema(self):
+        legacy_path = Path(self.tempdir.name) / 'legacy.sqlite3'
+        connection = sqlite3.connect(legacy_path)
+        connection.executescript(
+            """
+            CREATE TABLE puzzle_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                completed_at TEXT NOT NULL,
+                puzzle_id TEXT NOT NULL,
+                rating INTEGER NOT NULL,
+                success INTEGER NOT NULL,
+                fen TEXT NOT NULL,
+                orientation TEXT NOT NULL,
+                moves_json TEXT NOT NULL
+            );
+            CREATE TABLE puzzle_sessions (
+                id TEXT PRIMARY KEY,
+                started_at TEXT NOT NULL,
+                ends_at TEXT NOT NULL,
+                ended_at TEXT,
+                duration_seconds INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                completed_count INTEGER NOT NULL DEFAULT 0,
+                successes INTEGER NOT NULL DEFAULT 0
+            );
+            INSERT INTO puzzle_attempts
+                (completed_at, puzzle_id, rating, success, fen, orientation, moves_json)
+            VALUES
+                ('2025-01-01T12:00:00+00:00', 'legacy', 1300, 1, 'fen', 'white', '[]');
+            """
+        )
+        connection.commit()
+        connection.close()
+
+        store = PuzzleHistoryStore(legacy_path)
+        self.assertEqual(store.schema_version, SCHEMA_VERSION)
+        attempt = store.get_history()[0]
+        self.assertEqual(attempt['outcome'], 'success')
+        self.assertIsNone(attempt['duration_ms'])
+        # Columns added by later migrations are immediately usable.
+        session = store.start_session(5)
+        self.assertEqual(session['mode'], 'easiest')
+        self.assertEqual(session['blindfold_depth'], 9)
+
+    def test_migration_is_idempotent(self):
+        reopened = PuzzleHistoryStore(self.database)
+        self.assertEqual(reopened.schema_version, SCHEMA_VERSION)
+        reopened = PuzzleHistoryStore(self.database)
+        self.assertEqual(reopened.schema_version, SCHEMA_VERSION)
+
+    def test_clear_removes_all_records_but_keeps_schema(self):
+        self.store.record_attempt(
+            puzzle_id='one', rating=1200, success=True,
+            fen='fen', orientation='white', moves=[],
+        )
+        session = self.store.start_session(10)
+        self.store.set_session_puzzle(
+            session['id'], puzzle_id='two', rating=1300,
+            fen='fen', orientation='black', moves=[],
+        )
+        self.assertEqual(self.store.counts(), {'attempts': 1, 'sessions': 1})
+
+        self.store.clear()
+
+        self.assertEqual(self.store.get_history(), [])
+        self.assertEqual(self.store.get_sessions(), [])
+        self.assertEqual(self.store.counts(), {'attempts': 0, 'sessions': 0})
+        self.assertEqual(self.store.get_stats()['completed'], 0)
+        self.assertEqual(self.store.schema_version, SCHEMA_VERSION)
+        # The store still records new attempts after being cleared.
+        self.store.record_attempt(
+            puzzle_id='three', rating=1400, success=False,
+            fen='fen', orientation='black', moves=[],
+        )
+        self.assertEqual(len(self.store.get_history()), 1)
 
     def test_performance_and_solve_time_stats(self):
         base = datetime.now(timezone.utc)
@@ -376,6 +459,39 @@ class PuzzleBoardHistoryTests(unittest.TestCase):
         self.assertTrue(entries[0]['success'])
         self.assertIsNotNone(entries[0]['duration_ms'])
         self.assertGreaterEqual(entries[0]['duration_ms'], 0)
+
+
+class PuzzleHistoryCliTests(unittest.TestCase):
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.database = Path(self.tempdir.name) / 'history.sqlite3'
+
+    def tearDown(self):
+        self.tempdir.cleanup()
+
+    def _record(self, puzzle_id):
+        PuzzleHistoryStore(self.database).record_attempt(
+            puzzle_id=puzzle_id, rating=1200, success=True,
+            fen='fen', orientation='white', moves=[],
+        )
+
+    def test_clear_keeps_schema_and_removes_rows(self):
+        self._record('one')
+        with redirect_stdout(io.StringIO()):
+            result = puzzle_history_main(['--database', str(self.database), '--clear'])
+        self.assertEqual(result, 0)
+        store = PuzzleHistoryStore(self.database)
+        self.assertEqual(store.counts()['attempts'], 0)
+        self.assertEqual(store.schema_version, SCHEMA_VERSION)
+
+    def test_reset_recreates_an_empty_database(self):
+        self._record('one')
+        with redirect_stdout(io.StringIO()):
+            result = puzzle_history_main(['--database', str(self.database), '--reset'])
+        self.assertEqual(result, 0)
+        store = PuzzleHistoryStore(self.database)
+        self.assertEqual(store.counts(), {'attempts': 0, 'sessions': 0})
+        self.assertEqual(store.schema_version, SCHEMA_VERSION)
 
 
 if __name__ == '__main__':

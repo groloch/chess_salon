@@ -2,12 +2,123 @@
 
 from __future__ import annotations
 
+import argparse
 from datetime import datetime, timedelta, timezone
 import json
 import math
 import sqlite3
 from pathlib import Path
+import sys
 import uuid
+
+
+# ---------------------------------------------------------------------------
+# Schema migrations
+# ---------------------------------------------------------------------------
+# The schema version is stored in SQLite's built-in ``user_version`` pragma.
+# Every time a database is opened, any migration above the stored version is
+# applied automatically, so shipping a new database format never requires a
+# manual upgrade step. Each migration must be safe to run against a database
+# that already contains the change, because databases created before versioning
+# started at version 0 but may already include later columns.
+
+
+def _column_names(connection: sqlite3.Connection, table: str) -> set[str]:
+    return {row['name'] for row in connection.execute(f'PRAGMA table_info({table})')}
+
+
+def _add_column_if_missing(
+    connection: sqlite3.Connection,
+    table: str,
+    column: str,
+    definition: str,
+) -> None:
+    if column not in _column_names(connection, table):
+        connection.execute(f'ALTER TABLE {table} ADD COLUMN {column} {definition}')
+
+
+def _migration_1_initial_schema(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS puzzle_attempts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            completed_at TEXT NOT NULL,
+            puzzle_id TEXT NOT NULL,
+            rating INTEGER NOT NULL,
+            success INTEGER NOT NULL CHECK (success IN (0, 1)),
+            fen TEXT NOT NULL,
+            orientation TEXT NOT NULL CHECK (orientation IN ('white', 'black')),
+            moves_json TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS puzzle_sessions (
+            id TEXT PRIMARY KEY,
+            started_at TEXT NOT NULL,
+            ends_at TEXT NOT NULL,
+            ended_at TEXT,
+            duration_seconds INTEGER NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('active', 'completed', 'expired')),
+            completed_count INTEGER NOT NULL DEFAULT 0,
+            successes INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS puzzle_attempts_completed_at "
+        "ON puzzle_attempts (completed_at DESC, id DESC)"
+    )
+
+
+def _migration_2_attempt_sessions(connection: sqlite3.Connection) -> None:
+    _add_column_if_missing(connection, 'puzzle_attempts', 'session_id', 'TEXT')
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS puzzle_attempts_session "
+        "ON puzzle_attempts (session_id, completed_at)"
+    )
+
+
+def _migration_3_attempt_outcomes(connection: sqlite3.Connection) -> None:
+    if 'outcome' not in _column_names(connection, 'puzzle_attempts'):
+        connection.execute(
+            "ALTER TABLE puzzle_attempts ADD COLUMN outcome "
+            "TEXT NOT NULL DEFAULT 'failure'"
+        )
+        connection.execute(
+            "UPDATE puzzle_attempts SET outcome = CASE WHEN success = 1 "
+            "THEN 'success' ELSE 'failure' END"
+        )
+
+
+def _migration_4_attempt_duration(connection: sqlite3.Connection) -> None:
+    _add_column_if_missing(connection, 'puzzle_attempts', 'duration_ms', 'INTEGER')
+
+
+def _migration_5_session_state(connection: sqlite3.Connection) -> None:
+    for name, definition in (
+        ('expired_count', 'INTEGER NOT NULL DEFAULT 0'),
+        ('mode', "TEXT NOT NULL DEFAULT 'easiest'"),
+        ('blindfold_depth', 'INTEGER NOT NULL DEFAULT 9'),
+        ('current_puzzle_id', 'TEXT'),
+        ('current_rating', 'INTEGER'),
+        ('current_fen', 'TEXT'),
+        ('current_orientation', 'TEXT'),
+        ('current_moves_json', 'TEXT'),
+    ):
+        _add_column_if_missing(connection, 'puzzle_sessions', name, definition)
+
+
+MIGRATIONS = {
+    1: _migration_1_initial_schema,
+    2: _migration_2_attempt_sessions,
+    3: _migration_3_attempt_outcomes,
+    4: _migration_4_attempt_duration,
+    5: _migration_5_session_state,
+}
+
+SCHEMA_VERSION = max(MIGRATIONS)
 
 
 class PuzzleHistoryStore:
@@ -32,84 +143,47 @@ class PuzzleHistoryStore:
 
     def _initialize(self) -> None:
         with self._connect() as connection:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS puzzle_attempts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    completed_at TEXT NOT NULL,
-                    puzzle_id TEXT NOT NULL,
-                    rating INTEGER NOT NULL,
-                    success INTEGER NOT NULL CHECK (success IN (0, 1)),
-                    fen TEXT NOT NULL,
-                    orientation TEXT NOT NULL CHECK (orientation IN ('white', 'black')),
-                    moves_json TEXT NOT NULL,
-                    session_id TEXT,
-                    outcome TEXT NOT NULL DEFAULT 'failure',
-                    duration_ms INTEGER
-                )
-                """
-            )
-            attempt_columns = {
-                row['name'] for row in connection.execute('PRAGMA table_info(puzzle_attempts)')
-            }
-            if 'session_id' not in attempt_columns:
-                connection.execute('ALTER TABLE puzzle_attempts ADD COLUMN session_id TEXT')
-            if 'outcome' not in attempt_columns:
-                connection.execute("ALTER TABLE puzzle_attempts ADD COLUMN outcome TEXT NOT NULL DEFAULT 'failure'")
+            self._migrate(connection)
+
+    @staticmethod
+    def _migrate(connection: sqlite3.Connection) -> None:
+        """Apply any pending schema migrations tracked in ``user_version``."""
+        current_version = connection.execute('PRAGMA user_version').fetchone()[0]
+        for version in sorted(MIGRATIONS):
+            if version <= current_version:
+                continue
+            MIGRATIONS[version](connection)
+            connection.execute(f'PRAGMA user_version = {int(version)}')
+
+    @property
+    def schema_version(self) -> int:
+        with self._connect() as connection:
+            return connection.execute('PRAGMA user_version').fetchone()[0]
+
+    def counts(self) -> dict[str, int]:
+        """Return the number of stored attempts and sessions."""
+        with self._connect() as connection:
+            attempts = connection.execute(
+                'SELECT COUNT(*) FROM puzzle_attempts'
+            ).fetchone()[0]
+            sessions = connection.execute(
+                'SELECT COUNT(*) FROM puzzle_sessions'
+            ).fetchone()[0]
+        return {'attempts': attempts, 'sessions': sessions}
+
+    def clear(self) -> None:
+        """Delete every stored attempt and session (development helper)."""
+        with self._connect() as connection:
+            connection.execute('DELETE FROM puzzle_attempts')
+            connection.execute('DELETE FROM puzzle_sessions')
+            has_sequence = connection.execute(
+                "SELECT 1 FROM sqlite_master "
+                "WHERE type = 'table' AND name = 'sqlite_sequence'"
+            ).fetchone()
+            if has_sequence:
                 connection.execute(
-                    "UPDATE puzzle_attempts SET outcome = CASE WHEN success = 1 "
-                    "THEN 'success' ELSE 'failure' END"
+                    "DELETE FROM sqlite_sequence WHERE name = 'puzzle_attempts'"
                 )
-            if 'duration_ms' not in attempt_columns:
-                connection.execute('ALTER TABLE puzzle_attempts ADD COLUMN duration_ms INTEGER')
-
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS puzzle_sessions (
-                    id TEXT PRIMARY KEY,
-                    started_at TEXT NOT NULL,
-                    ends_at TEXT NOT NULL,
-                    ended_at TEXT,
-                    duration_seconds INTEGER NOT NULL,
-                    status TEXT NOT NULL CHECK (status IN ('active', 'completed', 'expired')),
-                    completed_count INTEGER NOT NULL DEFAULT 0,
-                    successes INTEGER NOT NULL DEFAULT 0,
-                    expired_count INTEGER NOT NULL DEFAULT 0,
-                    mode TEXT NOT NULL DEFAULT 'easiest',
-                    blindfold_depth INTEGER NOT NULL DEFAULT 9,
-                    current_puzzle_id TEXT,
-                    current_rating INTEGER,
-                    current_fen TEXT,
-                    current_orientation TEXT,
-                    current_moves_json TEXT
-                )
-                """
-            )
-            session_columns = {
-                row['name'] for row in connection.execute('PRAGMA table_info(puzzle_sessions)')
-            }
-            migrations = {
-                'expired_count': 'INTEGER NOT NULL DEFAULT 0',
-                'mode': "TEXT NOT NULL DEFAULT 'easiest'",
-                'blindfold_depth': 'INTEGER NOT NULL DEFAULT 9',
-                'current_puzzle_id': 'TEXT',
-                'current_rating': 'INTEGER',
-                'current_fen': 'TEXT',
-                'current_orientation': 'TEXT',
-                'current_moves_json': 'TEXT',
-            }
-            for name, definition in migrations.items():
-                if name not in session_columns:
-                    connection.execute(f'ALTER TABLE puzzle_sessions ADD COLUMN {name} {definition}')
-
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS puzzle_attempts_completed_at "
-                "ON puzzle_attempts (completed_at DESC, id DESC)"
-            )
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS puzzle_attempts_session "
-                "ON puzzle_attempts (session_id, completed_at)"
-            )
 
     def _insert_attempt(
         self,
@@ -582,3 +656,68 @@ class PuzzleHistoryStore:
             'fastest_solve_ms': min(durations) if durations else 0,
             'expired_count': int(expired),
         }
+
+
+# ---------------------------------------------------------------------------
+# Development utility
+# ---------------------------------------------------------------------------
+
+def default_database_path() -> Path:
+    """Return the instance database path used by the Flask app."""
+    return Path(__file__).resolve().parents[1] / 'instance' / 'puzzle_history.sqlite3'
+
+
+def _build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog='python -m chess_trainer.puzzle_history',
+        description='Manage the Chess Trainer puzzle history database.',
+    )
+    parser.add_argument(
+        '--database', type=Path, default=default_database_path(),
+        help='Path to the SQLite database (default: %(default)s).',
+    )
+    parser.add_argument(
+        '--clear', action='store_true',
+        help='Delete all stored attempts and sessions but keep the schema.',
+    )
+    parser.add_argument(
+        '--reset', action='store_true',
+        help='Delete the database file and recreate an empty, migrated schema.',
+    )
+    parser.add_argument(
+        '--status', action='store_true',
+        help='Print the schema version and row counts (default action).',
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = _build_arg_parser()
+    args = parser.parse_args(argv)
+    path = Path(args.database)
+
+    if args.reset:
+        if path.exists():
+            path.unlink()
+        store = PuzzleHistoryStore(path)
+        print(f'Recreated empty database at {path}')
+        print(f'Schema version: {store.schema_version}')
+        return 0
+
+    if args.clear:
+        store = PuzzleHistoryStore(path)
+        store.clear()
+        print(f'Cleared all puzzle attempts and sessions from {path}')
+        return 0
+
+    store = PuzzleHistoryStore(path)
+    counts = store.counts()
+    print(f'Database: {path}')
+    print(f'Schema version: {store.schema_version} (latest is {SCHEMA_VERSION})')
+    print(f'Attempts: {counts["attempts"]}')
+    print(f'Sessions: {counts["sessions"]}')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
