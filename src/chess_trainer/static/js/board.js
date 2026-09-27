@@ -178,6 +178,9 @@ export async function initBoard(opts = {}) {
         if (data.total_plies !== undefined) totalPlies = data.total_plies;
         else totalPlies = (data.moves || []).length;
 
+        if (opts.useServerOrientation && data.orientation) {
+            orientation = data.orientation;
+        }
         currentLegalMoves = data.legal_moves || [];
         currentTurnColor = data.turn;
         const dests = destsFromLegal(currentLegalMoves);
@@ -209,6 +212,9 @@ export async function initBoard(opts = {}) {
     function attemptMove(orig, dest, prom, skipSync = false) {
         return sendMove(boardId, orig, dest, prom, currentPly)
             .then(data => {
+                if (data.session_expired) {
+                    window.dispatchEvent(new CustomEvent('puzzle-session-expired'));
+                }
                 if(data.is_legal === false){
                     // TODO handle illegal move
                 }else if(data.is_correct === false){
@@ -217,7 +223,7 @@ export async function initBoard(opts = {}) {
                 return data;
             })
             .then(data => {
-                if (!skipSync) syncBoard(data);
+                if (!skipSync && !data.session_expired) syncBoard(data);
                 return data;
             })
             .catch((err) => {
@@ -230,6 +236,12 @@ export async function initBoard(opts = {}) {
     // ── initialise chessground ───────────────────────────────────
 
     const data = await fetchBoard(boardId);
+    if (data.session_expired) {
+        window.dispatchEvent(new CustomEvent('puzzle-session-expired'));
+    }
+    if (opts.useServerOrientation && data.orientation) {
+        orientation = data.orientation;
+    }
     currentLegalMoves = data.legal_moves || [];
     currentTurnColor = data.turn;
     const dests = destsFromLegal(currentLegalMoves);
@@ -243,7 +255,7 @@ export async function initBoard(opts = {}) {
         turnColor: data.turn,
         animation: opts.animation,
         movable: {
-            color: data.turn,
+            color: data.session_expired ? undefined : data.turn,
             free: false,
             dests,
             events: {

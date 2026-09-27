@@ -12,10 +12,16 @@
 {% block content %}
 <div class="board-area">
   <div class="board-column">
+    <section id="timed-session-status" class="timed-session-status" hidden>
+      <div><span class="session-eyebrow">TIMED SESSION</span><strong id="session-countdown">--:--</strong></div>
+      <p id="session-progress">Loading session…</p>
+    </section>
     <div id="board"></div>
+    <a class="puzzle-dashboard-link" href="/blind_puzzles">← Puzzle history</a>
   </div>
   <div id="movelist"></div>
 </div>
 
+<link rel="stylesheet" href="/static/css/puzzle_history.css" />
 <script src="/static/js/blind_puzzles.js" type="module"></script>
 {% endblock %}

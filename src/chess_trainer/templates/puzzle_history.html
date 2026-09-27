@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Chess Trainer – Blindfold Puzzles{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/chessground.base.css" />
+<link rel="stylesheet" href="/static/css/chessground.brown.css" />
+<link rel="stylesheet" href="/static/css/chessground.cburnett.css" />
+<link rel="stylesheet" href="/static/css/puzzle_history.css" />
+{% endblock %}
+
+{% block content %}
+<section class="history-dashboard" aria-labelledby="history-title">
+  <div class="history-heading">
+    <div>
+      <p class="eyebrow">BLINDFOLD TRAINING</p>
+      <h2 id="history-title">Puzzle history</h2>
+      <p class="history-intro">Your training at a glance. Select a board to revisit its Lichess puzzle.</p>
+    </div>
+    <button id="open-puzzle-settings" class="start-puzzle-button" type="button">Start training <span aria-hidden="true">→</span></button>
+  </div>
+
+  <section class="stats-grid" id="puzzle-stats" aria-label="Puzzle statistics">
+    <article class="stat-card"><span class="stat-label">Completed</span><strong data-stat="completed">—</strong><span class="stat-foot">puzzles played</span></article>
+    <article class="stat-card"><span class="stat-label">Success rate</span><strong data-stat="success_rate">—</strong><span class="stat-foot"><span data-stat="successes">—</span> solved</span></article>
+    <article class="stat-card"><span class="stat-label">Average rating</span><strong data-stat="average_rating">—</strong><span class="stat-foot">across all attempts</span></article>
+    <article class="stat-card"><span class="stat-label">Current streak</span><strong data-stat="current_streak">—</strong><span class="stat-foot">best <span data-stat="best_streak">—</span></span></article>
+  </section>
+
+  <div id="history-status" class="history-status" role="status">Loading your puzzle history…</div>
+  <section id="history-content" class="history-content" hidden>
+    <div id="history-days" class="history-days" aria-label="Puzzle history by day"></div>
+  </section>
+</section>
+
+<dialog id="puzzle-settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
+  <form id="puzzle-settings-form">
+    <div class="dialog-heading">
+      <div>
+        <p class="eyebrow">MAKE IT YOURS</p>
+        <h2 id="settings-title">Puzzle settings</h2>
+      </div>
+      <button id="close-puzzle-settings" class="dialog-close" type="button" aria-label="Close settings">×</button>
+    </div>
+    <label class="setting-field" for="puzzle-difficulty">
+      <span>Difficulty</span>
+      <select id="puzzle-difficulty" name="mode">
+        <option value="easiest">Easiest</option>
+        <option value="easier">Easier</option>
+        <option value="normal">Normal</option>
+        <option value="harder">Harder</option>
+        <option value="hardest">Hardest</option>
+      </select>
+      <small>Difficulty level requested from Lichess.</small>
+    </label>
+    <label class="setting-field" for="blindfold-depth">
+      <span>Blindfold depth</span>
+      <div class="depth-input-wrap"><input id="blindfold-depth" name="blindfold_depth" type="number" min="1" max="40" step="1" value="9" required><span>plies</span></div>
+      <small>How many moves to rewind before revealing the position.</small>
+    </label>
+    <label class="timer-toggle" for="timed-session">
+      <input id="timed-session" name="timed" type="checkbox" value="true">
+      <span><strong>Timed session</strong><small>Solve as many puzzles as you can before time runs out.</small></span>
+    </label>
+    <label class="setting-field duration-setting" for="session-duration" hidden>
+      <span>Session duration</span>
+      <div class="depth-input-wrap"><input id="session-duration" name="duration_minutes" type="number" min="1" max="180" step="1" value="30"><span>minutes</span></div>
+    </label>
+    <p id="puzzle-start-error" class="dialog-error" role="alert" hidden></p>
+    <div class="dialog-actions">
+      <button id="cancel-puzzle-settings" class="secondary-button" type="button">Cancel</button>
+      <button id="start-puzzle-submit" class="start-puzzle-button" type="submit">Start training</button>
+    </div>
+  </form>
+</dialog>
+<script src="/static/js/puzzle_history.js" type="module"></script>
+{% endblock %}
