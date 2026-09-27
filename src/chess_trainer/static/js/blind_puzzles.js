@@ -103,13 +103,15 @@ initBoard({
                 ground.set({ drawable: { shapes: [] } });
                 if (result?.session_expired) {
                     updateSession();
-                } else if (result?.completed) {
-                    if (sessionId) updateSession();
-                    sendGoto('puzzles', 0).then((position) => {
-                        if (position.session_expired) updateSession();
-                        else syncBoard(position);
-                    });
+                    return;
                 }
+                if (result?.completed && sessionId) updateSession();
+                // Intermediate solution moves also advance the server board,
+                // so always resync or the board never reflects the move.
+                sendGoto('puzzles', 0).then((position) => {
+                    if (position.session_expired) updateSession();
+                    else syncBoard(position);
+                });
             });
             }
         }
