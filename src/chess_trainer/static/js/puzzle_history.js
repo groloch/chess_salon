@@ -13,6 +13,28 @@ const startButton = document.getElementById('start-puzzle-submit');
 const startError = document.getElementById('puzzle-start-error');
 const timedSessionInput = document.getElementById('timed-session');
 const durationField = document.querySelector('.duration-setting');
+const difficultyInputs = [...settingsForm.querySelectorAll('input[name="difficulties"]')];
+const depthMinInput = document.getElementById('depth-min');
+const depthMaxInput = document.getElementById('depth-max');
+const depthMinValue = document.getElementById('depth-min-value');
+const depthMaxValue = document.getElementById('depth-max-value');
+const mixPreview = document.getElementById('mix-preview');
+const presetButtons = [...document.querySelectorAll('[data-preset]')];
+
+const DIFFICULTY_ORDER = ['easiest', 'easier', 'normal', 'harder', 'hardest'];
+const DIFFICULTY_LABELS = {
+  easiest: 'Easiest', easier: 'Easier', normal: 'Normal', harder: 'Harder', hardest: 'Hardest',
+};
+const MAX_DEPTH = 15;
+const MIX_STORAGE_KEY = 'chessTrainer.puzzleMix';
+// Presets deliberately stay within easy/normal difficulties; harder/hardest
+// remain selectable by hand but are not offered as quick starts.
+const MIX_PRESETS = {
+  zen: { difficulties: ['easiest'], depth_min: 5, depth_max: 6 },
+  steady: { difficulties: ['easiest', 'easier'], depth_min: 9, depth_max: 11 },
+  build: { difficulties: ['easier'], depth_min: 9, depth_max: 11 },
+  deep: { difficulties: ['normal'], depth_min: 7, depth_max: 9 },
+};
 
 function localDay(isoTimestamp) {
   const date = new Date(isoTimestamp);
@@ -37,6 +59,62 @@ function formatDuration(ms) {
     return `${hours}h ${minutes % 60}m`;
   }
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function readMixFromForm() {
+  let depthMin = Number(depthMinInput.value);
+  let depthMax = Number(depthMaxInput.value);
+  if (depthMin > depthMax) [depthMin, depthMax] = [depthMax, depthMin];
+  return {
+    difficulties: difficultyInputs.filter(input => input.checked).map(input => input.value),
+    depth_min: depthMin,
+    depth_max: depthMax,
+  };
+}
+
+function formatMix(mix) {
+  const difficulties = mix.difficulties || [];
+  const difficultyLabel = difficulties.length === DIFFICULTY_ORDER.length
+    ? 'all difficulties'
+    : difficulties.map(mode => DIFFICULTY_LABELS[mode] || mode).join(', ');
+  const depthLabel = mix.depth_min === mix.depth_max
+    ? `depth ${mix.depth_min}`
+    : `depth ${mix.depth_min}–${mix.depth_max}`;
+  if (difficulties.length === 1 && mix.depth_min === mix.depth_max) {
+    return `Fixed: ${difficultyLabel} · ${depthLabel}`;
+  }
+  return `Random draw from ${difficultyLabel} · ${depthLabel}`;
+}
+
+function updateMixPreview() {
+  if (mixPreview) mixPreview.textContent = formatMix(readMixFromForm());
+}
+
+function applyMix(mix) {
+  if (!mix || !Array.isArray(mix.difficulties)) return;
+  const selected = new Set(mix.difficulties);
+  difficultyInputs.forEach(input => { input.checked = selected.has(input.value); });
+  if (!difficultyInputs.some(input => input.checked)) {
+    const fallback = difficultyInputs.find(input => input.value === 'normal') || difficultyInputs[0];
+    if (fallback) fallback.checked = true;
+  }
+  if (Number.isFinite(mix.depth_min)) {
+    depthMinInput.value = String(Math.min(MAX_DEPTH, Math.max(1, mix.depth_min)));
+  }
+  if (Number.isFinite(mix.depth_max)) {
+    depthMaxInput.value = String(Math.min(MAX_DEPTH, Math.max(1, mix.depth_max)));
+  }
+  depthMinValue.textContent = depthMinInput.value;
+  depthMaxValue.textContent = depthMaxInput.value;
+  updateMixPreview();
+}
+
+function saveMix() {
+  try {
+    localStorage.setItem(MIX_STORAGE_KEY, JSON.stringify(readMixFromForm()));
+  } catch {
+    // Ignore storage failures (private mode, disabled storage).
+  }
 }
 
 function displayStats(stats) {
@@ -118,7 +196,11 @@ function makeSessionFrame(session, entries) {
   const title = document.createElement('strong');
   title.textContent = `${Math.round(session.duration_seconds / 60)} minute session`;
   const settings = document.createElement('span');
-  settings.textContent = `${session.mode} · ${session.blindfold_depth} plies`;
+  settings.textContent = formatMix(session.profile || {
+    difficulties: [session.mode],
+    depth_min: session.blindfold_depth,
+    depth_max: session.blindfold_depth,
+  });
   const when = document.createElement('time');
   when.dateTime = session.started_at;
   when.textContent = `${localTime(session.started_at)}${session.ended_at ? ` – ${localTime(session.ended_at)}` : ''}`;
@@ -206,13 +288,22 @@ async function startPuzzle(event) {
   event.preventDefault();
   startError.hidden = true;
   startError.textContent = '';
+
+  const mix = readMixFromForm();
+  if (!mix.difficulties.length) {
+    startError.textContent = 'Choose at least one difficulty.';
+    startError.hidden = false;
+    return;
+  }
+
   startButton.disabled = true;
   startButton.textContent = 'Fetching puzzle…';
 
   const formData = new FormData(settingsForm);
   const payload = {
-    mode: formData.get('mode'),
-    blindfold_depth: Number(formData.get('blindfold_depth')),
+    difficulties: mix.difficulties,
+    depth_min: mix.depth_min,
+    depth_max: mix.depth_max,
     timed: timedSessionInput.checked,
     duration_minutes: Number(formData.get('duration_minutes')),
   };
@@ -225,12 +316,13 @@ async function startPuzzle(event) {
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Could not start a puzzle.');
+    saveMix();
     window.location.assign(result.redirect_url);
   } catch (error) {
     startError.textContent = error.message || 'Could not start a puzzle. Please try again.';
     startError.hidden = false;
     startButton.disabled = false;
-    startButton.textContent = 'Start puzzle';
+    startButton.textContent = 'Start training';
   }
 }
 
@@ -268,5 +360,36 @@ settingsDialog.addEventListener('click', (event) => {
   if (event.target === settingsDialog) settingsDialog.close();
 });
 settingsForm.addEventListener('submit', startPuzzle);
+
+difficultyInputs.forEach(input => input.addEventListener('change', updateMixPreview));
+depthMinInput.addEventListener('input', () => {
+  if (Number(depthMinInput.value) > Number(depthMaxInput.value)) {
+    depthMaxInput.value = depthMinInput.value;
+  }
+  depthMinValue.textContent = depthMinInput.value;
+  depthMaxValue.textContent = depthMaxInput.value;
+  updateMixPreview();
+});
+depthMaxInput.addEventListener('input', () => {
+  if (Number(depthMaxInput.value) < Number(depthMinInput.value)) {
+    depthMinInput.value = depthMaxInput.value;
+  }
+  depthMinValue.textContent = depthMinInput.value;
+  depthMaxValue.textContent = depthMaxInput.value;
+  updateMixPreview();
+});
+presetButtons.forEach(button => button.addEventListener('click', () => {
+  const preset = MIX_PRESETS[button.dataset.preset];
+  if (preset) applyMix(preset);
+}));
+
+// Restore the last-used mix so returning players keep their settings.
+try {
+  const savedMix = JSON.parse(localStorage.getItem(MIX_STORAGE_KEY) || 'null');
+  if (savedMix) applyMix(savedMix);
+} catch {
+  // Ignore malformed or unavailable storage.
+}
+updateMixPreview();
 
 loadHistory();

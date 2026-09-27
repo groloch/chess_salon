@@ -16,6 +16,7 @@ from chess_trainer.boards.puzzle_board import (  # noqa: E402
     BlindfoldPuzzleChessBoard,
     BlindfoldPuzzleConfig,
 )
+from chess_trainer.boards.puzzle_mix import PuzzleMix  # noqa: E402
 from chess_trainer.puzzle_history import (  # noqa: E402
     SCHEMA_VERSION,
     PuzzleHistoryStore,
@@ -27,8 +28,10 @@ class FakePuzzleClient:
     def __init__(self, puzzles):
         self._puzzles = iter(puzzles)
         self.puzzles = self
+        self.requested = []
 
     def get_next(self, difficulty):
+        self.requested.append(difficulty)
         return next(self._puzzles)
 
 
@@ -295,6 +298,28 @@ class PuzzleHistoryStoreTests(unittest.TestCase):
         self.assertTrue(history[0]['success'])
         self.assertIsNone(history[0]['session_id'])
 
+    def test_session_round_trips_profile(self):
+        mix = PuzzleMix(('normal', 'harder'), 5, 10)
+        session = self.store.start_session(30, mix=mix)
+        self.assertEqual(session['profile'], mix.to_payload())
+        self.assertEqual(session['mode'], 'normal')
+        self.assertEqual(session['blindfold_depth'], 5)
+
+    def test_legacy_session_gets_fixed_profile(self):
+        session = self.store.start_session(10)
+        self.assertEqual(session['profile'], {
+            'difficulties': ['easiest'], 'depth_min': 9, 'depth_max': 9,
+        })
+
+    def test_attempt_records_sampled_mix(self):
+        self.store.record_attempt(
+            puzzle_id='mix', rating=1200, success=True, fen='fen',
+            orientation='white', moves=[], mode='harder', blindfold_depth=12,
+        )
+        entry = self.store.get_history()[0]
+        self.assertEqual(entry['mode'], 'harder')
+        self.assertEqual(entry['blindfold_depth'], 12)
+
     def test_streak_stats_and_empty_history(self):
         empty = self.store.get_stats()
         self.assertEqual(empty['completed'], 0)
@@ -378,8 +403,11 @@ class PuzzleStartApiTests(unittest.TestCase):
             })
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json['redirect_url'], '/blind_puzzles/play')
+        self.assertEqual(response.json['profile'], {
+            'difficulties': ['harder'], 'depth_min': 12, 'depth_max': 12,
+        })
         board = self.app_wrapper._boards['puzzles']
-        self.assertEqual(board.kwargs['config'], BlindfoldPuzzleConfig('harder', 12))
+        self.assertEqual(board.kwargs['mix'], PuzzleMix.fixed('harder', 12))
         self.assertIs(board.kwargs['history_store'], self.app_wrapper.puzzle_history)
 
     def test_detach_route_ends_session_and_untracks_board(self):
@@ -447,6 +475,14 @@ class PuzzleBoardHistoryTests(unittest.TestCase):
         self.assertEqual(entries[0]['fen'], puzzle_start_fen)
         self.assertEqual(self.board.current_puzzle_id, 'next-puzzle')
 
+    def test_board_samples_from_configured_mix(self):
+        mix = PuzzleMix(('harder', 'hardest'), 4, 4)
+        client = FakePuzzleClient([self.puzzle])
+        board = BlindfoldPuzzleChessBoard(client=client, token='test-token', mix=mix)
+        self.assertIn(client.requested[0], mix.difficulties)
+        self.assertIn(board.current_mode, mix.difficulties)
+        self.assertEqual(board.current_blindfold_depth, 4)
+
     def test_success_recorded_after_solution(self):
         # The first correct move advances to the opponent response; the second
         # correct move completes this two-ply puzzle line.
@@ -459,6 +495,54 @@ class PuzzleBoardHistoryTests(unittest.TestCase):
         self.assertTrue(entries[0]['success'])
         self.assertIsNotNone(entries[0]['duration_ms'])
         self.assertGreaterEqual(entries[0]['duration_ms'], 0)
+
+
+class PuzzleMixTests(unittest.TestCase):
+    def test_fixed_mix_is_deterministic(self):
+        mix = PuzzleMix.fixed('normal', 9)
+        self.assertEqual(mix.sample(), ('normal', 9))
+
+    def test_from_payload_accepts_new_and_legacy_shapes(self):
+        self.assertEqual(
+            PuzzleMix.from_payload({
+                'difficulties': ['normal', 'harder'], 'depth_min': 5, 'depth_max': 10,
+            }),
+            PuzzleMix(('normal', 'harder'), 5, 10),
+        )
+        self.assertEqual(
+            PuzzleMix.from_payload({'mode': 'easiest', 'blindfold_depth': 9}),
+            PuzzleMix.fixed('easiest', 9),
+        )
+
+    def test_from_payload_normalizes_and_validates(self):
+        # Duplicates are removed and reversed depths are swapped.
+        mix = PuzzleMix.from_payload({
+            'difficulties': ['normal', 'normal'], 'depth_min': 12, 'depth_max': 4,
+        })
+        self.assertEqual(mix, PuzzleMix(('normal',), 4, 12))
+        for invalid in (
+            {'difficulties': []},
+            {'difficulties': ['impossible']},
+            {'difficulties': ['normal'], 'depth_min': 0, 'depth_max': 5},
+            {'mode': 'normal', 'blindfold_depth': 41},
+        ):
+            with self.assertRaises(ValueError):
+                PuzzleMix.from_payload(invalid)
+
+    def test_sample_stays_within_support(self):
+        import random as random_module
+
+        mix = PuzzleMix(('normal', 'harder'), 5, 8)
+        rng = random_module.Random(1234)
+        for _ in range(50):
+            mode, depth = mix.sample(rng)
+            self.assertIn(mode, mix.difficulties)
+            self.assertGreaterEqual(depth, 5)
+            self.assertLessEqual(depth, 8)
+
+    def test_payload_round_trip(self):
+        mix = PuzzleMix(('easiest', 'hardest'), 3, 15)
+        self.assertEqual(PuzzleMix.from_payload(mix.to_payload()), mix)
 
 
 class PuzzleHistoryCliTests(unittest.TestCase):

@@ -5,11 +5,9 @@ from flask import Flask, jsonify, redirect, render_template, request
 from berserk import Client, TokenSession
 
 from .boards import ChessBoard, board_mapping
-from .boards.puzzle_board import BlindfoldPuzzleChessBoard, BlindfoldPuzzleConfig
+from .boards.puzzle_board import BlindfoldPuzzleChessBoard
+from .boards.puzzle_mix import PuzzleMix
 from .puzzle_history import PuzzleHistoryStore
-
-
-PUZZLE_DIFFICULTIES = {'easiest', 'easier', 'normal', 'harder', 'hardest'}
 
 
 class ChessApp:
@@ -122,12 +120,10 @@ class ChessApp:
 
     def api_start_puzzle(self):
         data = request.get_json(silent=True) or {}
-        mode = data.get('mode', 'easiest')
-        depth = data.get('blindfold_depth', 9)
-        if not isinstance(mode, str) or mode not in PUZZLE_DIFFICULTIES:
-            return jsonify(ok=False, error='Choose a valid puzzle difficulty.'), 400
-        if isinstance(depth, bool) or not isinstance(depth, int) or not 1 <= depth <= 40:
-            return jsonify(ok=False, error='Blindfold depth must be a whole number from 1 to 40.'), 400
+        try:
+            mix = PuzzleMix.from_payload(data)
+        except ValueError as error:
+            return jsonify(ok=False, error=str(error)), 400
 
         timed = data.get('timed', False)
         duration_minutes = data.get('duration_minutes', 30)
@@ -144,7 +140,7 @@ class ChessApp:
             board = BlindfoldPuzzleChessBoard(
                 client=self.client,
                 token=self.token,
-                config=BlindfoldPuzzleConfig(mode=mode, blindfold_depth=depth),
+                mix=mix,
                 history_store=self.puzzle_history,
             )
         except Exception:
@@ -154,11 +150,7 @@ class ChessApp:
         session = None
         if timed:
             try:
-                session = self.puzzle_history.start_session(
-                    duration_minutes,
-                    mode=mode,
-                    blindfold_depth=depth,
-                )
+                session = self.puzzle_history.start_session(duration_minutes, mix=mix)
             except Exception:
                 self.app.logger.exception('Could not create a timed puzzle session')
                 return jsonify(ok=False, error='Could not start a timed session. Please try again.'), 500
@@ -170,6 +162,8 @@ class ChessApp:
                 fen=board.puzzle_start_fen,
                 orientation=board.orientation,
                 moves=board.puzzle_start_moves,
+                mode=getattr(board, 'current_mode', None),
+                blindfold_depth=getattr(board, 'current_blindfold_depth', None),
             )
             if not saved:
                 self.puzzle_history.expire_session_if_due(session['id'])
@@ -179,7 +173,7 @@ class ChessApp:
         redirect_url = '/blind_puzzles/play'
         if session:
             redirect_url += f"?session_id={session['id']}"
-        return jsonify(ok=True, redirect_url=redirect_url, session=session)
+        return jsonify(ok=True, redirect_url=redirect_url, session=session, profile=mix.to_payload())
 
     def api_get_board(self, board_id: str):
         board = self._get_board(board_id)

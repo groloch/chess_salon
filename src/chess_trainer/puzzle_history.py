@@ -110,12 +110,28 @@ def _migration_5_session_state(connection: sqlite3.Connection) -> None:
         _add_column_if_missing(connection, 'puzzle_sessions', name, definition)
 
 
+def _migration_6_session_profile(connection: sqlite3.Connection) -> None:
+    for name, definition in (
+        ('profile_json', 'TEXT'),
+        ('current_mode', 'TEXT'),
+        ('current_blindfold_depth', 'INTEGER'),
+    ):
+        _add_column_if_missing(connection, 'puzzle_sessions', name, definition)
+
+
+def _migration_7_attempt_mix(connection: sqlite3.Connection) -> None:
+    _add_column_if_missing(connection, 'puzzle_attempts', 'mode', 'TEXT')
+    _add_column_if_missing(connection, 'puzzle_attempts', 'blindfold_depth', 'INTEGER')
+
+
 MIGRATIONS = {
     1: _migration_1_initial_schema,
     2: _migration_2_attempt_sessions,
     3: _migration_3_attempt_outcomes,
     4: _migration_4_attempt_duration,
     5: _migration_5_session_state,
+    6: _migration_6_session_profile,
+    7: _migration_7_attempt_mix,
 }
 
 SCHEMA_VERSION = max(MIGRATIONS)
@@ -198,16 +214,19 @@ class PuzzleHistoryStore:
         moves: list[dict],
         session_id: str | None,
         duration_ms: int | None = None,
+        mode: str | None = None,
+        blindfold_depth: int | None = None,
     ) -> int:
         cursor = connection.execute(
             """
             INSERT INTO puzzle_attempts
-                (completed_at, puzzle_id, rating, success, fen, orientation, moves_json, session_id, outcome, duration_ms)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (completed_at, puzzle_id, rating, success, fen, orientation, moves_json, session_id, outcome, duration_ms, mode, blindfold_depth)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 completed_at, puzzle_id, int(rating), int(outcome == 'success'), fen,
                 orientation, json.dumps(moves), session_id, outcome, duration_ms,
+                mode, blindfold_depth,
             ),
         )
         return int(cursor.lastrowid)
@@ -224,6 +243,8 @@ class PuzzleHistoryStore:
         completed_at: datetime | None = None,
         session_id: str | None = None,
         duration_ms: int | None = None,
+        mode: str | None = None,
+        blindfold_depth: int | None = None,
     ) -> int | None:
         timestamp_value = self._utc(completed_at)
         timestamp = timestamp_value.isoformat()
@@ -247,6 +268,8 @@ class PuzzleHistoryStore:
                             orientation=session['current_orientation'],
                             moves=json.loads(session['current_moves_json'] or '[]'),
                             session_id=session_id,
+                            mode=session['current_mode'],
+                            blindfold_depth=session['current_blindfold_depth'],
                         )
                         connection.execute(
                             "UPDATE puzzle_sessions SET status = 'expired', ended_at = ends_at, "
@@ -274,6 +297,8 @@ class PuzzleHistoryStore:
                 moves=moves,
                 session_id=session_id,
                 duration_ms=duration_ms,
+                mode=mode,
+                blindfold_depth=blindfold_depth,
             )
             if session_id is not None:
                 connection.execute(
@@ -289,6 +314,7 @@ class PuzzleHistoryStore:
         self,
         duration_minutes: int,
         *,
+        mix=None,
         mode: str = 'easiest',
         blindfold_depth: int = 9,
         started_at: datetime | None = None,
@@ -296,14 +322,24 @@ class PuzzleHistoryStore:
         started = self._utc(started_at)
         ends = started + timedelta(minutes=duration_minutes)
         session_id = str(uuid.uuid4())
+        if mix is not None:
+            mode = mix.difficulties[0]
+            blindfold_depth = mix.depth_min
+            profile_json = json.dumps(mix.to_payload())
+        else:
+            profile_json = json.dumps({
+                'difficulties': [mode],
+                'depth_min': blindfold_depth,
+                'depth_max': blindfold_depth,
+            })
         with self._connect() as connection:
             connection.execute(
                 "INSERT INTO puzzle_sessions "
-                "(id, started_at, ends_at, duration_seconds, status, mode, blindfold_depth) "
-                "VALUES (?, ?, ?, ?, 'active', ?, ?)",
+                "(id, started_at, ends_at, duration_seconds, status, mode, blindfold_depth, profile_json) "
+                "VALUES (?, ?, ?, ?, 'active', ?, ?, ?)",
                 (
                     session_id, started.isoformat(), ends.isoformat(), duration_minutes * 60,
-                    mode, blindfold_depth,
+                    mode, blindfold_depth, profile_json,
                 ),
             )
         return self.get_session(session_id)
@@ -317,6 +353,8 @@ class PuzzleHistoryStore:
         fen: str,
         orientation: str,
         moves: list[dict],
+        mode: str | None = None,
+        blindfold_depth: int | None = None,
         now: datetime | None = None,
     ) -> bool:
         timestamp_value = self._utc(now)
@@ -325,10 +363,12 @@ class PuzzleHistoryStore:
         with self._connect() as connection:
             cursor = connection.execute(
                 "UPDATE puzzle_sessions SET current_puzzle_id = ?, current_rating = ?, "
-                "current_fen = ?, current_orientation = ?, current_moves_json = ? "
+                "current_fen = ?, current_orientation = ?, current_moves_json = ?, "
+                "current_mode = ?, current_blindfold_depth = ? "
                 "WHERE id = ? AND status = 'active' AND ends_at > ?",
                 (
-                    puzzle_id, rating, fen, orientation, json.dumps(moves), session_id, timestamp,
+                    puzzle_id, rating, fen, orientation, json.dumps(moves),
+                    mode, blindfold_depth, session_id, timestamp,
                 ),
             )
             return cursor.rowcount == 1
@@ -358,6 +398,8 @@ class PuzzleHistoryStore:
                         orientation=session['current_orientation'],
                         moves=json.loads(session['current_moves_json'] or '[]'),
                         session_id=session_id,
+                        mode=session['current_mode'],
+                        blindfold_depth=session['current_blindfold_depth'],
                     )
                     connection.execute(
                         'UPDATE puzzle_sessions SET expired_count = expired_count + 1, '
@@ -398,6 +440,8 @@ class PuzzleHistoryStore:
                         orientation=session['current_orientation'],
                         moves=json.loads(session['current_moves_json'] or '[]'),
                         session_id=session_id,
+                        mode=session['current_mode'],
+                        blindfold_depth=session['current_blindfold_depth'],
                     )
                     connection.execute(
                         'UPDATE puzzle_sessions SET expired_count = expired_count + 1 WHERE id = ?',
@@ -428,6 +472,18 @@ class PuzzleHistoryStore:
 
     @staticmethod
     def _session_entry(row: sqlite3.Row) -> dict:
+        profile = None
+        if row['profile_json']:
+            try:
+                profile = json.loads(row['profile_json'])
+            except (TypeError, ValueError):
+                profile = None
+        if profile is None:
+            profile = {
+                'difficulties': [row['mode']],
+                'depth_min': row['blindfold_depth'],
+                'depth_max': row['blindfold_depth'],
+            }
         return {
             'id': row['id'],
             'started_at': row['started_at'],
@@ -442,6 +498,9 @@ class PuzzleHistoryStore:
             'active_puzzle_id': row['current_puzzle_id'],
             'mode': row['mode'],
             'blindfold_depth': row['blindfold_depth'],
+            'profile': profile,
+            'active_mode': row['current_mode'],
+            'active_blindfold_depth': row['current_blindfold_depth'],
         }
 
     def get_session(self, session_id: str) -> dict | None:
@@ -515,6 +574,8 @@ class PuzzleHistoryStore:
             'moves': json.loads(row['moves_json']),
             'session_id': row['session_id'],
             'duration_ms': row['duration_ms'],
+            'mode': row['mode'],
+            'blindfold_depth': row['blindfold_depth'],
         }
 
     def get_history(self, limit: int = 500) -> list[dict]:

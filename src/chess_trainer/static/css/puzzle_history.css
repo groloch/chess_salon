@@ -78,6 +78,42 @@
 .depth-input-wrap { position: relative; }
 .depth-input-wrap input { padding-right: 4.5rem; }
 .depth-input-wrap > span { position: absolute; top: 50%; right: .8rem; color: #92a1b8; transform: translateY(-50%); }
+.preset-chips { display: flex; flex-wrap: wrap; gap: .5rem; }
+.preset-chip {
+  padding: .5rem .85rem; border: 1px solid #3a4b69; border-radius: 999px;
+  color: #d4dcec; font: inherit; font-size: .85rem; font-weight: 600;
+  cursor: pointer; background: #101a2c;
+  transition: border-color .15s ease, background .15s ease, color .15s ease;
+}
+.preset-chip:hover { border-color: #8ba1c3; background: #1c2b45; color: #fff; }
+.difficulty-field { border: 0; padding: 0; }
+.difficulty-field legend { margin-bottom: .5rem; font-weight: 650; }
+.field-hint { margin: -.1rem 0 .55rem; color: #94a3bb; font-size: .82rem; line-height: 1.4; }
+.difficulty-chips { display: flex; flex-wrap: wrap; gap: .5rem; }
+.difficulty-chip { position: relative; cursor: pointer; }
+.difficulty-chip input {
+  position: absolute; opacity: 0; width: 1px; height: 1px; min-height: 0; padding: 0;
+}
+.difficulty-chip span {
+  display: inline-block; padding: .5rem .85rem; border: 1px solid #3a4b69; border-radius: 999px;
+  color: #c3cde0; font-size: .85rem; font-weight: 600; background: #101a2c;
+  transition: border-color .15s ease, background .15s ease, color .15s ease;
+}
+.difficulty-chip input:checked + span {
+  border-color: #ff7185; color: #fff; background: linear-gradient(135deg, #e94560, #c72f52);
+}
+.difficulty-chip input:focus-visible + span { outline: 2px solid #7694c4; outline-offset: 2px; }
+.depth-range-field .depth-slider-row { display: flex; align-items: center; gap: .75rem; margin: .35rem 0; }
+.depth-slider-row label { flex: 0 0 4.5rem; color: #c3cde0; font-size: .85rem; font-weight: 600; }
+.depth-slider-row output { color: #fff; font-variant-numeric: tabular-nums; }
+.depth-slider-row input[type="range"] {
+  flex: 1; width: auto; min-height: auto; padding: 0; background: transparent; accent-color: #e94560;
+}
+.mix-preview {
+  margin: .9rem 0 .3rem; padding: .65rem .8rem;
+  border: 1px solid #354563; border-radius: 10px;
+  color: #dbe3f0; font-size: .88rem; line-height: 1.45; background: #1b2941;
+}
 .dialog-error { margin: 1rem 0 0; color: #ff9aa6; font-size: .9rem; line-height: 1.45; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: .65rem; margin-top: 1.6rem; }
 .secondary-button {

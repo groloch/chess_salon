@@ -1,4 +1,5 @@
 from . import ChessBoard
+from .puzzle_mix import PuzzleMix
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -21,6 +22,7 @@ class BlindfoldPuzzleChessBoard(ChessBoard):
             client : Client,
             token: str,
             config: BlindfoldPuzzleConfig = BlindfoldPuzzleConfig(),
+            mix: PuzzleMix | None = None,
             history_store=None,
             session_id: str | None = None,
             **kwargs):
@@ -28,6 +30,9 @@ class BlindfoldPuzzleChessBoard(ChessBoard):
 
         self.client: Client = client
         self.config = config
+        self.mix = mix or PuzzleMix.from_config(config)
+        self.current_mode = self.mix.difficulties[0]
+        self.current_blindfold_depth = self.mix.depth_min
         self.history_store = history_store
         self.session_id = session_id
 
@@ -45,7 +50,11 @@ class BlindfoldPuzzleChessBoard(ChessBoard):
             if session is None or session['status'] != 'active' or session['remaining_seconds'] <= 0:
                 raise RuntimeError('The timed puzzle session has ended.')
 
-        puzzle = self.client.puzzles.get_next(difficulty=self.config.mode)
+        mode, blindfold_depth = self.mix.sample()
+        self.current_mode = mode
+        self.current_blindfold_depth = blindfold_depth
+
+        puzzle = self.client.puzzles.get_next(difficulty=mode)
 
         movelist = puzzle['game']['pgn'].split()
         solution = puzzle['puzzle']['solution']
@@ -53,10 +62,10 @@ class BlindfoldPuzzleChessBoard(ChessBoard):
 
         board = chess.Board()
 
-        for move in movelist[:-self.config.blindfold_depth]:
+        for move in movelist[:-blindfold_depth]:
             board.push_san(move)
 
-        blind_moves = movelist[-self.config.blindfold_depth:]
+        blind_moves = movelist[-blindfold_depth:]
         fen = board.fen()
         self.board = chess.Board(fen)
         self.start_fen = fen
@@ -79,6 +88,8 @@ class BlindfoldPuzzleChessBoard(ChessBoard):
                 fen=self.puzzle_start_fen,
                 orientation=self.orientation,
                 moves=self.puzzle_start_moves,
+                mode=mode,
+                blindfold_depth=blindfold_depth,
             )
             if not saved:
                 raise RuntimeError('The timed puzzle session expired while fetching a puzzle.')
@@ -104,6 +115,8 @@ class BlindfoldPuzzleChessBoard(ChessBoard):
             completed_at=completed_at,
             session_id=self.session_id,
             duration_ms=duration_ms,
+            mode=self.current_mode,
+            blindfold_depth=self.current_blindfold_depth,
         )
 
     def is_correct(self, uci_move: str) -> bool:

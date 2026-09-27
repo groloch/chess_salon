@@ -46,22 +46,42 @@
       </div>
       <button id="close-puzzle-settings" class="dialog-close" type="button" aria-label="Close settings">×</button>
     </div>
-    <label class="setting-field" for="puzzle-difficulty">
-      <span>Difficulty</span>
-      <select id="puzzle-difficulty" name="mode">
-        <option value="easiest">Easiest</option>
-        <option value="easier">Easier</option>
-        <option value="normal">Normal</option>
-        <option value="harder">Harder</option>
-        <option value="hardest">Hardest</option>
-      </select>
-      <small>Difficulty level requested from Lichess.</small>
-    </label>
-    <label class="setting-field" for="blindfold-depth">
+    <div class="setting-field">
+      <span>Presets</span>
+      <div class="preset-chips" role="group" aria-label="Quick start presets">
+        <button type="button" class="preset-chip" data-preset="zen">Zen</button>
+        <button type="button" class="preset-chip" data-preset="steady">Steady</button>
+        <button type="button" class="preset-chip" data-preset="build">Build</button>
+        <button type="button" class="preset-chip" data-preset="deep">Deep</button>
+      </div>
+    </div>
+
+    <fieldset class="setting-field difficulty-field">
+      <legend>Difficulty</legend>
+      <p class="field-hint">Puzzles are drawn at random from your selection.</p>
+      <div class="difficulty-chips">
+        <label class="difficulty-chip"><input type="checkbox" name="difficulties" value="easiest"><span>Easiest</span></label>
+        <label class="difficulty-chip"><input type="checkbox" name="difficulties" value="easier"><span>Easier</span></label>
+        <label class="difficulty-chip"><input type="checkbox" name="difficulties" value="normal" checked><span>Normal</span></label>
+        <label class="difficulty-chip"><input type="checkbox" name="difficulties" value="harder"><span>Harder</span></label>
+        <label class="difficulty-chip"><input type="checkbox" name="difficulties" value="hardest"><span>Hardest</span></label>
+      </div>
+    </fieldset>
+
+    <div class="setting-field depth-range-field">
       <span>Blindfold depth</span>
-      <div class="depth-input-wrap"><input id="blindfold-depth" name="blindfold_depth" type="number" min="1" max="40" step="1" value="9" required><span>plies</span></div>
-      <small>How many moves to rewind before revealing the position.</small>
-    </label>
+      <div class="depth-slider-row">
+        <label for="depth-min">Min <output id="depth-min-value" for="depth-min">9</output></label>
+        <input id="depth-min" name="depth_min" type="range" min="1" max="15" step="1" value="9">
+      </div>
+      <div class="depth-slider-row">
+        <label for="depth-max">Max <output id="depth-max-value" for="depth-max">9</output></label>
+        <input id="depth-max" name="depth_max" type="range" min="1" max="15" step="1" value="9">
+      </div>
+      <small>How many moves to rewind before revealing the position. A range draws a random depth each puzzle.</small>
+    </div>
+
+    <div id="mix-preview" class="mix-preview" role="status" aria-live="polite"></div>
     <label class="timer-toggle" for="timed-session">
       <input id="timed-session" name="timed" type="checkbox" value="true">
       <span><strong>Timed session</strong><small>Solve as many puzzles as you can before time runs out.</small></span>
