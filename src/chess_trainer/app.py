@@ -104,7 +104,7 @@ class ChessApp:
         return jsonify(session=session)
 
     def api_detach_puzzle_session(self, session_id: str):
-        '''End a timed session while letting the player finish the active puzzle.'''
+        '''End a timed session and switch the board to normal untimed training.'''
         session = self.puzzle_history.detach_session(session_id)
         if session is None:
             return jsonify(ok=False, error='Timed session not found.'), 404

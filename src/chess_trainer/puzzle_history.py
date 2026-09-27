@@ -387,9 +387,9 @@ class PuzzleHistoryStore:
     def detach_session(self, session_id: str, now: datetime | None = None) -> dict | None:
         """End a session without recording its active puzzle as expired.
 
-        Used when the player chooses to finish the in-progress puzzle after
-        time runs out: the puzzle is then recorded on its own, outside the
-        timed session.
+        Used when the player chooses to keep training untimed after time runs
+        out: the in-progress puzzle and any following ones are recorded outside
+        the timed session.
         """
         timestamp = self._utc(now).isoformat()
         with self._connect() as connection:

@@ -157,7 +157,7 @@ class PuzzleHistoryStoreTests(unittest.TestCase):
         self.store.expire_due_sessions()
         self.assertEqual(self.store.get_history()[0]['outcome'], 'expired')
 
-    def test_detach_session_leaves_puzzle_to_be_finished_outside_session(self):
+    def test_detach_session_switches_to_untimed_training(self):
         started = datetime.now(timezone.utc)
         session = self.store.start_session(30, started_at=started)
         self.store.set_session_puzzle(

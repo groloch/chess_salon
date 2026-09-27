@@ -7,12 +7,11 @@ const sessionCountdown = document.getElementById('session-countdown');
 const sessionProgress = document.getElementById('session-progress');
 const sessionOverDialog = document.getElementById('session-over-dialog');
 const sessionOverSummary = document.getElementById('session-over-summary');
-const continuePuzzleButton = document.getElementById('continue-puzzle-button');
+const continueTrainingButton = document.getElementById('continue-training-button');
 const finishTrainingButton = document.getElementById('finish-training-button');
 let sessionTimer;
 let sessionExpired = false;
 let timeUp = false;
-let finishingDetachedPuzzle = false;
 let groundRef;
 
 function formatRemaining(seconds) {
@@ -105,7 +104,7 @@ async function finishTraining() {
     if (sessionProgress) sessionProgress.textContent = summary;
 }
 
-async function continueCurrentPuzzle() {
+async function continueTraining() {
     const endingId = sessionId;
     let detached = false;
     try {
@@ -118,10 +117,11 @@ async function continueCurrentPuzzle() {
         await finishTraining();
         return;
     }
+    // Fall back to a normal, untimed training flow: the board keeps fetching
+    // puzzles and records every attempt outside the timed session.
     sessionId = null;
     timeUp = false;
     sessionExpired = false;
-    finishingDetachedPuzzle = true;
     clearInterval(sessionTimer);
     if (sessionOverDialog) sessionOverDialog.close();
     if (sessionStatus) sessionStatus.remove();
@@ -138,7 +138,7 @@ if (sessionId) {
     if (sessionOverDialog) {
         sessionOverDialog.addEventListener('cancel', (event) => event.preventDefault());
     }
-    if (continuePuzzleButton) continuePuzzleButton.addEventListener('click', continueCurrentPuzzle);
+    if (continueTrainingButton) continueTrainingButton.addEventListener('click', continueTraining);
     if (finishTrainingButton) finishTrainingButton.addEventListener('click', finishTraining);
 }
 
@@ -163,11 +163,6 @@ initBoard({
                 ground.set({ drawable: { shapes: [] } });
                 if (result?.session_expired) {
                     updateSession();
-                    return;
-                }
-                if (result?.completed && finishingDetachedPuzzle) {
-                    lockBoard();
-                    window.location.assign('/blind_puzzles');
                     return;
                 }
                 if (result?.completed && sessionId) updateSession();
