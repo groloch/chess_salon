@@ -86,6 +86,7 @@
 }
 .secondary-button:hover { background: #24334d; }
 .dialog-actions .start-puzzle-button { padding: .72rem .95rem; }
+.session-over-summary { margin: 0; color: #c3cde0; line-height: 1.55; }
 .timed-session-status {
   width: min(90vw, 720px);
   display: flex;

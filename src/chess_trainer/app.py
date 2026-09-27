@@ -40,6 +40,7 @@ class ChessApp:
         self.app.add_url_rule('/api/puzzles/history', 'api_puzzle_history', self.api_puzzle_history, methods=['GET'])
         self.app.add_url_rule('/api/puzzles/session/<string:session_id>', 'api_puzzle_session', self.api_puzzle_session, methods=['GET'])
         self.app.add_url_rule('/api/puzzles/session/<string:session_id>/finish', 'api_finish_puzzle_session', self.api_finish_puzzle_session, methods=['POST'])
+        self.app.add_url_rule('/api/puzzles/session/<string:session_id>/detach', 'api_detach_puzzle_session', self.api_detach_puzzle_session, methods=['POST'])
         self.app.add_url_rule('/api/move/<string:board_id>', 'api_move', self.api_move, methods=['POST'])
         self.app.add_url_rule('/api/goto/<string:board_id>/<int:ply>', 'api_goto', self.api_goto, methods=['GET'])
         self.app.add_url_rule('/api/undo/<string:board_id>', 'api_undo', self.api_undo, methods=['POST'])
@@ -101,6 +102,23 @@ class ChessApp:
         if session is None:
             return jsonify(ok=False, error='Timed session not found.'), 404
         return jsonify(session=session)
+
+    def api_detach_puzzle_session(self, session_id: str):
+        '''End a timed session while letting the player finish the active puzzle.'''
+        session = self.puzzle_history.detach_session(session_id)
+        if session is None:
+            return jsonify(ok=False, error='Timed session not found.'), 404
+        board = self._boards.get('puzzles')
+        if board is not None and getattr(board, 'session_id', None) == session_id:
+            board.session_id = None
+        return jsonify(session=session)
+
+    def _active_session(self, session_id: str) -> dict | None:
+        '''Return the session only while it is still running.'''
+        session = self.puzzle_history.get_session(session_id)
+        if session is None or session['status'] != 'active' or session['remaining_seconds'] <= 0:
+            return None
+        return session
 
     def api_start_puzzle(self):
         data = request.get_json(silent=True) or {}
@@ -166,8 +184,8 @@ class ChessApp:
     def api_get_board(self, board_id: str):
         board = self._get_board(board_id)
         session_id = getattr(board, 'session_id', None) if board_id == 'puzzles' else None
-        session = self.puzzle_history.get_session(session_id) if session_id else None
-        session_active = session is None or session['status'] == 'active'
+        session = self._active_session(session_id) if session_id else None
+        session_active = session is not None if session_id else True
         return jsonify(
             fen=board.fen,
             turn=board.turn,
@@ -187,25 +205,23 @@ class ChessApp:
         from_ply = data.get('from_ply', None)
         board = self._get_board(board_id)
         session_id = getattr(board, 'session_id', None) if board_id == 'puzzles' else None
-        if session_id:
-            session = self.puzzle_history.get_session(session_id)
-            if session is None or session['status'] != 'active':
-                return jsonify(
-                    legal=False,
-                    correct=False,
-                    completed=False,
-                    win=False,
-                    session_expired=True,
-                    fen=board.fen,
-                    turn=board.turn,
-                    legal_moves=[],
-                    is_check=board.is_check,
-                    is_game_over=board.is_game_over,
-                    result=board.result,
-                    moves=board.move_history,
-                    ply=board.total_plies,
-                    orientation=getattr(board, 'orientation', 'white'),
-                )
+        if session_id and self._active_session(session_id) is None:
+            return jsonify(
+                legal=False,
+                correct=False,
+                completed=False,
+                win=False,
+                session_expired=True,
+                fen=board.fen,
+                turn=board.turn,
+                legal_moves=[],
+                is_check=board.is_check,
+                is_game_over=board.is_game_over,
+                result=board.result,
+                moves=board.move_history,
+                ply=board.total_plies,
+                orientation=getattr(board, 'orientation', 'white'),
+            )
 
         move_result = board.push_move_at_ply(uci, from_ply)
         ply = board.total_plies
@@ -226,10 +242,8 @@ class ChessApp:
     def api_goto(self, board_id: str, ply: int):
         board = self._get_board(board_id)
         session_id = getattr(board, 'session_id', None) if board_id == 'puzzles' else None
-        if session_id:
-            session = self.puzzle_history.get_session(session_id)
-            if session is None or session['status'] != 'active':
-                return jsonify(ok=False, session_expired=True, error='Timed session has ended.'), 410
+        if session_id and self._active_session(session_id) is None:
+            return jsonify(ok=False, session_expired=True, error='Timed session has ended.'), 410
         pos = board.position_at_ply(ply)
         pos['moves'] = board.move_history
         pos['total_plies'] = board.total_plies

@@ -138,6 +138,49 @@ class PuzzleHistoryStoreTests(unittest.TestCase):
         self.assertEqual(history[0]['outcome'], 'expired')
         self.assertEqual(self.store.get_session(session['id'])['expired_count'], 1)
 
+    def test_get_session_does_not_expire_in_progress_puzzle(self):
+        started = datetime.now(timezone.utc) - timedelta(minutes=2)
+        session = self.store.start_session(1, started_at=started)
+        self.store.set_session_puzzle(
+            session['id'], puzzle_id='still-open', rating=1200,
+            fen='position', orientation='white', moves=[], now=started,
+        )
+        # Reading the session is side-effect free: the puzzle is not counted yet.
+        read = self.store.get_session(session['id'])
+        self.assertEqual(read['status'], 'active')
+        self.assertEqual(read['remaining_seconds'], 0)
+        with self.store._connect() as connection:
+            self.assertEqual(
+                connection.execute('SELECT COUNT(*) FROM puzzle_attempts').fetchone()[0], 0,
+            )
+        # Dashboard cleanup still expires abandoned sessions.
+        self.store.expire_due_sessions()
+        self.assertEqual(self.store.get_history()[0]['outcome'], 'expired')
+
+    def test_detach_session_leaves_puzzle_to_be_finished_outside_session(self):
+        started = datetime.now(timezone.utc)
+        session = self.store.start_session(30, started_at=started)
+        self.store.set_session_puzzle(
+            session['id'], puzzle_id='carry-over', rating=1300,
+            fen='position', orientation='white', moves=[], now=started,
+        )
+        detached = self.store.detach_session(session['id'], now=started + timedelta(minutes=5))
+        self.assertEqual(detached['status'], 'completed')
+        self.assertIsNone(detached['active_puzzle_id'])
+        self.assertEqual(detached['expired_count'], 0)
+        self.assertEqual(self.store.get_history(), [])
+
+        # The board then records the finished puzzle without a session id.
+        self.store.record_attempt(
+            puzzle_id='carry-over', rating=1300, success=True,
+            fen='position', orientation='white', moves=[],
+            completed_at=started + timedelta(minutes=6),
+        )
+        history = self.store.get_history()
+        self.assertEqual(len(history), 1)
+        self.assertTrue(history[0]['success'])
+        self.assertIsNone(history[0]['session_id'])
+
     def test_streak_stats_and_empty_history(self):
         self.assertEqual(self.store.get_stats(), {
             'completed': 0,
@@ -221,6 +264,31 @@ class PuzzleStartApiTests(unittest.TestCase):
         board = self.app_wrapper._boards['puzzles']
         self.assertEqual(board.kwargs['config'], BlindfoldPuzzleConfig('harder', 12))
         self.assertIs(board.kwargs['history_store'], self.app_wrapper.puzzle_history)
+
+    def test_detach_route_ends_session_and_untracks_board(self):
+        class FakeBoard:
+            def __init__(self, **kwargs):
+                self.current_puzzle_id = 'first'
+                self.rating = 1400
+                self.puzzle_start_fen = 'fen'
+                self.orientation = 'black'
+                self.puzzle_start_moves = []
+                self.session_id = None
+                self.kwargs = kwargs
+
+        with patch('chess_trainer.app.BlindfoldPuzzleChessBoard', FakeBoard):
+            start = self.client.post('/api/puzzles/start', json={
+                'mode': 'normal', 'blindfold_depth': 9,
+                'timed': True, 'duration_minutes': 30,
+            })
+        session_id = start.json['session']['id']
+        self.assertEqual(self.app_wrapper._boards['puzzles'].session_id, session_id)
+
+        response = self.client.post(f'/api/puzzles/session/{session_id}/detach')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json['session']['status'], 'completed')
+        self.assertIsNone(self.app_wrapper._boards['puzzles'].session_id)
+        self.assertEqual(self.app_wrapper.puzzle_history.get_history(), [])
 
 
 class PuzzleBoardHistoryTests(unittest.TestCase):

@@ -40,7 +40,7 @@ class BlindfoldPuzzleChessBoard(ChessBoard):
     def fetch_next_puzzle(self):
         if self.history_store is not None and self.session_id is not None:
             session = self.history_store.get_session(self.session_id)
-            if session is None or session['status'] != 'active':
+            if session is None or session['status'] != 'active' or session['remaining_seconds'] <= 0:
                 raise RuntimeError('The timed puzzle session has ended.')
 
         puzzle = self.client.puzzles.get_next(difficulty=self.config.mode)

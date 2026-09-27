@@ -365,13 +365,51 @@ class PuzzleHistoryStore:
         }
 
     def get_session(self, session_id: str) -> dict | None:
-        session = self.expire_session_if_due(session_id)
-        if session is not None:
-            remaining = datetime.fromisoformat(session['ends_at']) - self._utc()
-            session['remaining_seconds'] = (
-                max(0, math.ceil(remaining.total_seconds())) if session['status'] == 'active' else 0
-            )
+        """Return a session without expiring it.
+
+        Expiry is a write side effect (it records the in-progress puzzle as
+        expired). Keeping this read-only lets the client ask the user whether
+        they want to finish the current puzzle before that happens.
+        """
+        with self._connect() as connection:
+            row = connection.execute(
+                'SELECT * FROM puzzle_sessions WHERE id = ?', (session_id,)
+            ).fetchone()
+        if row is None:
+            return None
+        session = self._session_entry(row)
+        remaining = datetime.fromisoformat(session['ends_at']) - self._utc()
+        session['remaining_seconds'] = (
+            max(0, math.ceil(remaining.total_seconds())) if session['status'] == 'active' else 0
+        )
         return session
+
+    def detach_session(self, session_id: str, now: datetime | None = None) -> dict | None:
+        """End a session without recording its active puzzle as expired.
+
+        Used when the player chooses to finish the in-progress puzzle after
+        time runs out: the puzzle is then recorded on its own, outside the
+        timed session.
+        """
+        timestamp = self._utc(now).isoformat()
+        with self._connect() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            session = connection.execute(
+                'SELECT * FROM puzzle_sessions WHERE id = ?', (session_id,)
+            ).fetchone()
+            if session is None:
+                return None
+            if session['status'] == 'active':
+                connection.execute(
+                    "UPDATE puzzle_sessions SET status = 'completed', ended_at = ?, "
+                    'current_puzzle_id = NULL, current_rating = NULL, current_fen = NULL, '
+                    'current_orientation = NULL, current_moves_json = NULL WHERE id = ?',
+                    (timestamp, session_id),
+                )
+            session = connection.execute(
+                'SELECT * FROM puzzle_sessions WHERE id = ?', (session_id,)
+            ).fetchone()
+            return self._session_entry(session)
 
     def get_sessions(self, limit: int = 500) -> list[dict]:
         self.expire_due_sessions()

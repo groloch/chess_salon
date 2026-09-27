@@ -22,6 +22,20 @@
   <div id="movelist"></div>
 </div>
 
+<dialog id="session-over-dialog" class="settings-dialog" aria-labelledby="session-over-title">
+  <div class="dialog-heading">
+    <div>
+      <p class="eyebrow">TIME'S UP</p>
+      <h2 id="session-over-title">Timed session complete</h2>
+    </div>
+  </div>
+  <p id="session-over-summary" class="session-over-summary">The timer has run out.</p>
+  <div class="dialog-actions">
+    <button id="finish-training-button" class="secondary-button" type="button">Finish training</button>
+    <button id="continue-puzzle-button" class="start-puzzle-button" type="button">Finish current puzzle</button>
+  </div>
+</dialog>
+
 <link rel="stylesheet" href="/static/css/puzzle_history.css" />
 <script src="/static/js/blind_puzzles.js" type="module"></script>
 {% endblock %}

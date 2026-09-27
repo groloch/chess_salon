@@ -1,13 +1,18 @@
 import { initBoard } from '/static/js/board.js';
 import { sendGoto } from '/static/js/api.js';
 
-const sessionId = new URLSearchParams(window.location.search).get('session_id');
+let sessionId = new URLSearchParams(window.location.search).get('session_id');
 const sessionStatus = document.getElementById('timed-session-status');
 const sessionCountdown = document.getElementById('session-countdown');
 const sessionProgress = document.getElementById('session-progress');
+const sessionOverDialog = document.getElementById('session-over-dialog');
+const sessionOverSummary = document.getElementById('session-over-summary');
+const continuePuzzleButton = document.getElementById('continue-puzzle-button');
+const finishTrainingButton = document.getElementById('finish-training-button');
 let sessionTimer;
 let sessionExpired = false;
-let finishRequestPending = false;
+let timeUp = false;
+let finishingDetachedPuzzle = false;
 let groundRef;
 
 function formatRemaining(seconds) {
@@ -16,55 +21,61 @@ function formatRemaining(seconds) {
     return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
+function lockBoard() {
+    if (groundRef) groundRef.set({ viewOnly: true, drawable: { enabled: false, shapes: [] } });
+}
+
+function unlockBoard() {
+    if (groundRef) groundRef.set({ viewOnly: false, drawable: { enabled: true } });
+}
+
 function expireSession() {
     const firstExpiration = !sessionExpired;
     sessionExpired = true;
     clearInterval(sessionTimer);
-    if (groundRef) groundRef.set({ viewOnly: true, drawable: { enabled: false, shapes: [] } });
+    lockBoard();
     if (firstExpiration && sessionProgress) {
         sessionProgress.textContent = 'Session complete — the active puzzle expired and was not counted as a failure.';
     }
 }
 
+function showSessionOver(session) {
+    if (timeUp) return;
+    timeUp = true;
+    clearInterval(sessionTimer);
+    if (sessionCountdown) sessionCountdown.textContent = '00:00';
+    if (sessionProgress) sessionProgress.textContent = 'Time is up — choose how to continue.';
+    if (sessionStatus) sessionStatus.classList.add('time-low');
+    lockBoard();
+    if (sessionOverSummary && session) {
+        sessionOverSummary.textContent =
+            `${session.completed_count} completed · ${session.successes} solved · ${session.failures} missed.`;
+    }
+    if (sessionOverDialog) sessionOverDialog.showModal();
+}
+
 async function updateSession() {
-    if (!sessionId) return;
+    if (!sessionId || timeUp || sessionExpired) return;
     try {
         const response = await fetch(`/api/puzzles/session/${encodeURIComponent(sessionId)}`);
         if (!response.ok) throw new Error('Session ended');
         const { session } = await response.json();
         const remaining = Math.max(0, session.remaining_seconds ?? Math.ceil((Date.parse(session.ends_at) - Date.now()) / 1000));
-        sessionCountdown.textContent = formatRemaining(remaining);
-        sessionProgress.textContent = `${session.completed_count} completed · ${session.successes} solved · ${session.failures} missed`;
-        sessionStatus.classList.toggle('time-low', remaining <= 60);
+        if (sessionCountdown) sessionCountdown.textContent = formatRemaining(remaining);
+        if (sessionProgress) sessionProgress.textContent =
+            `${session.completed_count} completed · ${session.successes} solved · ${session.failures} missed`;
+        if (sessionStatus) sessionStatus.classList.toggle('time-low', remaining <= 60);
         if (session.status === 'active' && remaining <= 0) {
-            sessionProgress.textContent = 'Finishing timed session…';
-            if (finishRequestPending) return;
-            finishRequestPending = true;
-            try {
-                const response = await fetch(`/api/puzzles/session/${encodeURIComponent(sessionId)}/finish`, { method: 'POST' });
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.error || 'Session could not be ended');
-                sessionCountdown.textContent = '00:00';
-                sessionProgress.textContent = result.session.expired_count > 0
-                    ? 'Time is up — the active puzzle expired and was not counted as a failure.'
-                    : `${session.completed_count} puzzles completed · ${session.successes} solved · ${session.failures} missed.`;
-                expireSession();
-            } catch {
-                expireSession();
-            } finally {
-                finishRequestPending = false;
-            }
+            showSessionOver(session);
             return;
         }
-        if (remaining <= 0 || session.status !== 'active') {
-            const status = session.status;
+        if (session.status !== 'active') {
             expireSession();
-            if (session.expired_count > 0) {
-                sessionProgress.textContent = 'Time is up — the active puzzle expired and was not counted as a failure.';
-            } else if (status !== 'active') {
-                sessionProgress.textContent = `${session.completed_count} puzzles completed · ${session.successes} solved · ${session.failures} missed.`;
+            if (sessionProgress) {
+                sessionProgress.textContent = session.expired_count > 0
+                    ? 'Time is up — the active puzzle expired and was not counted as a failure.'
+                    : `${session.completed_count} puzzles completed · ${session.successes} solved · ${session.failures} missed.`;
             }
-            return;
         }
     } catch {
         if (sessionExpired) return;
@@ -72,14 +83,63 @@ async function updateSession() {
     }
 }
 
+async function finishTraining() {
+    const endingId = sessionId;
+    sessionId = null;
+    timeUp = false;
+    clearInterval(sessionTimer);
+    let summary = 'Time is up — the active puzzle expired and was not counted as a failure.';
+    try {
+        const response = await fetch(`/api/puzzles/session/${encodeURIComponent(endingId)}/finish`, { method: 'POST' });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Session could not be ended');
+        if (result.session.expired_count === 0) {
+            summary = `${result.session.completed_count} puzzles completed · ${result.session.successes} solved · ${result.session.failures} missed.`;
+        }
+    } catch {
+        // Even if the request fails, stop the interactive session locally.
+    }
+    if (sessionOverDialog) sessionOverDialog.close();
+    expireSession();
+    if (sessionCountdown) sessionCountdown.textContent = '00:00';
+    if (sessionProgress) sessionProgress.textContent = summary;
+}
+
+async function continueCurrentPuzzle() {
+    const endingId = sessionId;
+    let detached = false;
+    try {
+        const response = await fetch(`/api/puzzles/session/${encodeURIComponent(endingId)}/detach`, { method: 'POST' });
+        detached = response.ok;
+    } catch {
+        detached = false;
+    }
+    if (!detached) {
+        await finishTraining();
+        return;
+    }
+    sessionId = null;
+    timeUp = false;
+    sessionExpired = false;
+    finishingDetachedPuzzle = true;
+    clearInterval(sessionTimer);
+    if (sessionOverDialog) sessionOverDialog.close();
+    if (sessionStatus) sessionStatus.remove();
+    unlockBoard();
+}
+
 if (sessionId) {
-    sessionStatus.hidden = false;
+    if (sessionStatus) sessionStatus.hidden = false;
     updateSession();
     sessionTimer = setInterval(updateSession, 1000);
     window.addEventListener('puzzle-session-expired', () => {
-        expireSession();
-        updateSession();
+        if (!timeUp) updateSession();
     });
+    if (sessionOverDialog) {
+        sessionOverDialog.addEventListener('cancel', (event) => event.preventDefault());
+    }
+    if (continuePuzzleButton) continuePuzzleButton.addEventListener('click', continueCurrentPuzzle);
+    if (finishTrainingButton) finishTrainingButton.addEventListener('click', finishTraining);
 }
 
 initBoard({
@@ -96,13 +156,18 @@ initBoard({
         enabled: true,
         onChange: (shapes) => {
             const arrow = shapes.find(s => s.orig && s.dest);
-            if (arrow && !sessionExpired) {
+            if (arrow && !sessionExpired && !timeUp) {
             // Chessground reports square names (e.g. e7, e5), regardless of
             // orientation, so concatenate them directly as a UCI move.
             attemptMove(arrow.orig, arrow.dest, null, true).then((result) => {
                 ground.set({ drawable: { shapes: [] } });
                 if (result?.session_expired) {
                     updateSession();
+                    return;
+                }
+                if (result?.completed && finishingDetachedPuzzle) {
+                    lockBoard();
+                    window.location.assign('/blind_puzzles');
                     return;
                 }
                 if (result?.completed && sessionId) updateSession();
