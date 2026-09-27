@@ -44,7 +44,8 @@ class PuzzleHistoryStore:
                     orientation TEXT NOT NULL CHECK (orientation IN ('white', 'black')),
                     moves_json TEXT NOT NULL,
                     session_id TEXT,
-                    outcome TEXT NOT NULL DEFAULT 'failure'
+                    outcome TEXT NOT NULL DEFAULT 'failure',
+                    duration_ms INTEGER
                 )
                 """
             )
@@ -59,6 +60,8 @@ class PuzzleHistoryStore:
                     "UPDATE puzzle_attempts SET outcome = CASE WHEN success = 1 "
                     "THEN 'success' ELSE 'failure' END"
                 )
+            if 'duration_ms' not in attempt_columns:
+                connection.execute('ALTER TABLE puzzle_attempts ADD COLUMN duration_ms INTEGER')
 
             connection.execute(
                 """
@@ -120,16 +123,17 @@ class PuzzleHistoryStore:
         orientation: str,
         moves: list[dict],
         session_id: str | None,
+        duration_ms: int | None = None,
     ) -> int:
         cursor = connection.execute(
             """
             INSERT INTO puzzle_attempts
-                (completed_at, puzzle_id, rating, success, fen, orientation, moves_json, session_id, outcome)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (completed_at, puzzle_id, rating, success, fen, orientation, moves_json, session_id, outcome, duration_ms)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 completed_at, puzzle_id, int(rating), int(outcome == 'success'), fen,
-                orientation, json.dumps(moves), session_id, outcome,
+                orientation, json.dumps(moves), session_id, outcome, duration_ms,
             ),
         )
         return int(cursor.lastrowid)
@@ -145,6 +149,7 @@ class PuzzleHistoryStore:
         moves: list[dict],
         completed_at: datetime | None = None,
         session_id: str | None = None,
+        duration_ms: int | None = None,
     ) -> int | None:
         timestamp_value = self._utc(completed_at)
         timestamp = timestamp_value.isoformat()
@@ -194,6 +199,7 @@ class PuzzleHistoryStore:
                 orientation=orientation,
                 moves=moves,
                 session_id=session_id,
+                duration_ms=duration_ms,
             )
             if session_id is not None:
                 connection.execute(
@@ -434,6 +440,7 @@ class PuzzleHistoryStore:
             'orientation': row['orientation'],
             'moves': json.loads(row['moves_json']),
             'session_id': row['session_id'],
+            'duration_ms': row['duration_ms'],
         }
 
     def get_history(self, limit: int = 500) -> list[dict]:
@@ -447,42 +454,131 @@ class PuzzleHistoryStore:
             ).fetchall()
         return [self._entry(row) for row in rows]
 
+    @staticmethod
+    def _rate(successes: int, total: int) -> float:
+        return round(successes * 100 / total, 1) if total else 0
+
+    @staticmethod
+    def _performance_rating(results: list[tuple[int, bool]]) -> int:
+        """Estimate the rating at which the observed score is expected.
+
+        Uses a maximum-likelihood Elo fit over every attempt, so it reflects
+        performance against the difficulty actually faced rather than the raw
+        average of puzzle ratings. The estimate is bounded to the range of
+        puzzles attempted (plus a margin) so all-solved histories stay sane.
+        """
+        if not results:
+            return 0
+        ratings = [rating for rating, _ in results]
+        actual = sum(1 for _, success in results if success)
+        low = float(max(400, min(ratings) - 400))
+        high = float(min(3200, max(ratings) + 400))
+        if low >= high:
+            return round(sum(ratings) / len(ratings))
+        for _ in range(60):
+            mid = (low + high) / 2
+            expected = sum(
+                1 / (1 + 10 ** ((rating - mid) / 400))
+                for rating in ratings
+            )
+            if expected > actual:
+                high = mid
+            else:
+                low = mid
+        return round((low + high) / 2)
+
     def get_stats(self) -> dict:
         self.expire_due_sessions()
         with self._connect() as connection:
-            summary = connection.execute(
-                "SELECT COUNT(*) AS total, "
-                "COALESCE(SUM(success), 0) AS successes, "
-                "COALESCE(AVG(rating), 0) AS average_rating "
-                "FROM puzzle_attempts WHERE outcome != 'expired'"
-            ).fetchone()
-            outcomes = connection.execute(
-                "SELECT success FROM puzzle_attempts WHERE outcome != 'expired' "
+            rows = connection.execute(
+                "SELECT rating, success, orientation, completed_at, duration_ms "
+                "FROM puzzle_attempts WHERE outcome != 'expired' "
                 "ORDER BY completed_at DESC, id DESC"
             ).fetchall()
+            expired = connection.execute(
+                "SELECT COUNT(*) FROM puzzle_attempts WHERE outcome = 'expired'"
+            ).fetchone()[0]
+            best_session = connection.execute(
+                "SELECT COALESCE(MAX(successes), 0) FROM puzzle_sessions "
+                "WHERE status != 'active'"
+            ).fetchone()[0]
 
-        total = summary['total']
-        successes = summary['successes']
+        total = len(rows)
+        successes = sum(1 for row in rows if row['success'])
+        ratings = [row['rating'] for row in rows]
+
         current_streak = 0
-        for row in outcomes:
+        for row in rows:
             if not row['success']:
                 break
             current_streak += 1
 
         best_streak = 0
         streak = 0
-        for row in reversed(outcomes):
+        for row in reversed(rows):
             if row['success']:
                 streak += 1
                 best_streak = max(best_streak, streak)
             else:
                 streak = 0
 
+        recent = rows[:20]
+        previous = rows[20:40]
+        recent_rate = self._rate(sum(1 for r in recent if r['success']), len(recent))
+        previous_rate = self._rate(sum(1 for r in previous if r['success']), len(previous))
+
+        solved_ratings = [row['rating'] for row in rows if row['success']]
+        durations = [row['duration_ms'] for row in rows if row['duration_ms'] is not None]
+
+        white = [row for row in rows if row['orientation'] == 'white']
+        black = [row for row in rows if row['orientation'] == 'black']
+        white_successes = sum(1 for row in white if row['success'])
+        black_successes = sum(1 for row in black if row['success'])
+
+        completed_days = [
+            self._utc(datetime.fromisoformat(row['completed_at'])).date()
+            for row in rows
+        ]
+        day_set = set(completed_days)
+        today = self._utc().date()
+        cursor = today if today in day_set else today - timedelta(days=1)
+        current_day_streak = 0
+        while cursor in day_set:
+            current_day_streak += 1
+            cursor -= timedelta(days=1)
+        week_start = today - timedelta(days=6)
+
         return {
             'completed': total,
             'successes': successes,
-            'success_rate': round(successes * 100 / total, 1) if total else 0,
-            'average_rating': round(summary['average_rating']) if total else 0,
+            'failures': total - successes,
+            'success_rate': self._rate(successes, total),
+            'average_rating': round(sum(ratings) / total) if total else 0,
             'current_streak': current_streak,
             'best_streak': best_streak,
+            'recent_success_rate': recent_rate,
+            'recent_trend': round(recent_rate - previous_rate, 1) if previous else None,
+            'performance_rating': self._performance_rating(
+                [(row['rating'], bool(row['success'])) for row in rows]
+            ),
+            'highest_rated_solved': max(solved_ratings) if solved_ratings else 0,
+            'hardest_rating': max(ratings) if ratings else 0,
+            'average_solved_rating': (
+                round(sum(solved_ratings) / len(solved_ratings)) if solved_ratings else 0
+            ),
+            'white_attempts': len(white),
+            'white_successes': white_successes,
+            'white_success_rate': self._rate(white_successes, len(white)),
+            'black_attempts': len(black),
+            'black_successes': black_successes,
+            'black_success_rate': self._rate(black_successes, len(black)),
+            'puzzles_last_7_days': sum(1 for day in completed_days if day >= week_start),
+            'active_days': len(day_set),
+            'current_day_streak': current_day_streak,
+            'best_session_solved': int(best_session),
+            'average_solve_time_ms': (
+                round(sum(durations) / len(durations)) if durations else 0
+            ),
+            'fastest_solve_ms': min(durations) if durations else 0,
+            'expired_count': int(expired),
         }

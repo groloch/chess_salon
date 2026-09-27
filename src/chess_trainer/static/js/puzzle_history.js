@@ -6,6 +6,7 @@ const daysEl = document.getElementById('history-days');
 const statElements = Object.fromEntries(
   [...document.querySelectorAll('[data-stat]')].map(el => [el.dataset.stat, el])
 );
+const recentTrendEl = document.getElementById('recent-trend');
 const settingsDialog = document.getElementById('puzzle-settings-dialog');
 const settingsForm = document.getElementById('puzzle-settings-form');
 const startButton = document.getElementById('start-puzzle-submit');
@@ -26,10 +27,43 @@ function localTime(isoTimestamp) {
   }).format(new Date(isoTimestamp));
 }
 
+function formatDuration(ms) {
+  if (!ms) return '—';
+  const totalSeconds = Math.round(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes >= 60) {
+    const hours = Math.floor(minutes / 60);
+    return `${hours}h ${minutes % 60}m`;
+  }
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
 function displayStats(stats) {
+  const hasData = (stats.completed ?? 0) > 0;
   for (const [key, element] of Object.entries(statElements)) {
     const value = stats[key] ?? 0;
-    element.textContent = key === 'success_rate' ? `${value}%` : value;
+    const isRate = key.endsWith('_rate');
+    if (!hasData && (isRate || key.endsWith('_ms') || key === 'performance_rating')) {
+      element.textContent = '—';
+    } else if (isRate) {
+      element.textContent = `${value}%`;
+    } else if (key.endsWith('_ms')) {
+      element.textContent = formatDuration(value);
+    } else {
+      element.textContent = `${value}`;
+    }
+  }
+  if (recentTrendEl) {
+    const trend = stats.recent_trend;
+    if (!hasData || trend === null || trend === undefined || trend === 0) {
+      recentTrendEl.textContent = '';
+      recentTrendEl.className = 'stat-trend';
+    } else {
+      const up = trend > 0;
+      recentTrendEl.textContent = `${up ? '▲' : '▼'} ${Math.abs(trend)}`;
+      recentTrendEl.className = `stat-trend ${up ? 'up' : 'down'}`;
+    }
   }
 }
 
@@ -66,7 +100,9 @@ function makePuzzleCard(entry) {
   const time = document.createElement('time');
   time.className = 'puzzle-time';
   time.dateTime = entry.completed_at;
-  time.textContent = localTime(entry.completed_at);
+  time.textContent = entry.duration_ms
+    ? `${localTime(entry.completed_at)} · ${formatDuration(entry.duration_ms)}`
+    : localTime(entry.completed_at);
   info.append(top, time);
   link.append(boardEl, info);
   return link;

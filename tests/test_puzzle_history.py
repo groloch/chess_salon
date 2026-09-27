@@ -57,14 +57,45 @@ class PuzzleHistoryStoreTests(unittest.TestCase):
             'success-two', 'failure', 'success-one',
         ])
         self.assertEqual(reopened.get_history()[0]['orientation'], 'black')
-        self.assertEqual(reopened.get_stats(), {
-            'completed': 3,
-            'successes': 2,
-            'success_rate': 66.7,
-            'average_rating': 1400,
-            'current_streak': 1,
-            'best_streak': 1,
-        })
+        stats = reopened.get_stats()
+        self.assertEqual(stats['completed'], 3)
+        self.assertEqual(stats['successes'], 2)
+        self.assertEqual(stats['failures'], 1)
+        self.assertEqual(stats['success_rate'], 66.7)
+        self.assertEqual(stats['average_rating'], 1400)
+        self.assertEqual(stats['current_streak'], 1)
+        self.assertEqual(stats['best_streak'], 1)
+        self.assertEqual(stats['recent_success_rate'], 66.7)
+        self.assertIsNone(stats['recent_trend'])
+        self.assertEqual(stats['highest_rated_solved'], 1600)
+        self.assertEqual(stats['average_solved_rating'], 1400)
+        self.assertEqual(stats['white_attempts'], 1)
+        self.assertEqual(stats['white_successes'], 0)
+        self.assertEqual(stats['black_attempts'], 2)
+        self.assertEqual(stats['black_successes'], 2)
+        self.assertEqual(stats['black_success_rate'], 100.0)
+        self.assertEqual(stats['average_solve_time_ms'], 0)
+
+    def test_performance_and_solve_time_stats(self):
+        base = datetime.now(timezone.utc)
+        self.store.record_attempt(
+            puzzle_id='rated-even', rating=1500, success=True,
+            fen='fen', orientation='white', moves=[],
+            completed_at=base, duration_ms=10000,
+        )
+        self.store.record_attempt(
+            puzzle_id='rated-even-miss', rating=1500, success=False,
+            fen='fen', orientation='white', moves=[],
+            completed_at=base + timedelta(seconds=1), duration_ms=30000,
+        )
+        stats = self.store.get_stats()
+        # One win and one loss at the same rating places performance at that rating.
+        self.assertEqual(stats['performance_rating'], 1500)
+        self.assertEqual(stats['average_solve_time_ms'], 20000)
+        self.assertEqual(stats['fastest_solve_ms'], 10000)
+        self.assertEqual(stats['puzzles_last_7_days'], 2)
+        self.assertEqual(stats['active_days'], 1)
+        self.assertEqual(stats['current_day_streak'], 1)
 
     def test_manually_ending_session_records_open_puzzle_as_expired(self):
         started = datetime.now(timezone.utc)
@@ -182,14 +213,17 @@ class PuzzleHistoryStoreTests(unittest.TestCase):
         self.assertIsNone(history[0]['session_id'])
 
     def test_streak_stats_and_empty_history(self):
-        self.assertEqual(self.store.get_stats(), {
-            'completed': 0,
-            'successes': 0,
-            'success_rate': 0,
-            'average_rating': 0,
-            'current_streak': 0,
-            'best_streak': 0,
-        })
+        empty = self.store.get_stats()
+        self.assertEqual(empty['completed'], 0)
+        self.assertEqual(empty['successes'], 0)
+        self.assertEqual(empty['success_rate'], 0)
+        self.assertEqual(empty['average_rating'], 0)
+        self.assertEqual(empty['current_streak'], 0)
+        self.assertEqual(empty['best_streak'], 0)
+        self.assertEqual(empty['performance_rating'], 0)
+        self.assertEqual(empty['average_solve_time_ms'], 0)
+        self.assertEqual(empty['active_days'], 0)
+        self.assertIsNone(empty['recent_trend'])
         for index, success in enumerate([True, False, True, True, True]):
             self.store.record_attempt(
                 puzzle_id=str(index), rating=1000, success=success,
@@ -340,6 +374,8 @@ class PuzzleBoardHistoryTests(unittest.TestCase):
         entries = self.store.get_history()
         self.assertEqual(len(entries), 1)
         self.assertTrue(entries[0]['success'])
+        self.assertIsNotNone(entries[0]['duration_ms'])
+        self.assertGreaterEqual(entries[0]['duration_ms'], 0)
 
 
 if __name__ == '__main__':

@@ -21,10 +21,14 @@
   </div>
 
   <section class="stats-grid" id="puzzle-stats" aria-label="Puzzle statistics">
-    <article class="stat-card"><span class="stat-label">Completed</span><strong data-stat="completed">—</strong><span class="stat-foot">puzzles played</span></article>
-    <article class="stat-card"><span class="stat-label">Success rate</span><strong data-stat="success_rate">—</strong><span class="stat-foot"><span data-stat="successes">—</span> solved</span></article>
-    <article class="stat-card"><span class="stat-label">Average rating</span><strong data-stat="average_rating">—</strong><span class="stat-foot">across all attempts</span></article>
+    <article class="stat-card"><span class="stat-label">Solved</span><strong data-stat="successes">—</strong><span class="stat-foot">of <span data-stat="completed">—</span> attempts</span></article>
+    <article class="stat-card"><span class="stat-label">Success rate</span><strong data-stat="success_rate">—</strong><span class="stat-foot">last 20: <span data-stat="recent_success_rate">—</span> <span id="recent-trend" class="stat-trend"></span></span></article>
+    <article class="stat-card"><span class="stat-label">Performance rating</span><strong data-stat="performance_rating">—</strong><span class="stat-foot">best solved <span data-stat="highest_rated_solved">—</span></span></article>
+    <article class="stat-card"><span class="stat-label">Average rating</span><strong data-stat="average_rating">—</strong><span class="stat-foot">hardest <span data-stat="hardest_rating">—</span></span></article>
     <article class="stat-card"><span class="stat-label">Current streak</span><strong data-stat="current_streak">—</strong><span class="stat-foot">best <span data-stat="best_streak">—</span></span></article>
+    <article class="stat-card"><span class="stat-label">Average solve time</span><strong data-stat="average_solve_time_ms">—</strong><span class="stat-foot">fastest <span data-stat="fastest_solve_ms">—</span></span></article>
+    <article class="stat-card"><span class="stat-label">White / Black</span><strong><span data-stat="white_success_rate">—</span> / <span data-stat="black_success_rate">—</span></strong><span class="stat-foot"><span data-stat="white_successes">—</span> W · <span data-stat="black_successes">—</span> B solved</span></article>
+    <article class="stat-card"><span class="stat-label">Last 7 days</span><strong data-stat="puzzles_last_7_days">—</strong><span class="stat-foot"><span data-stat="active_days">—</span> active days · <span data-stat="current_day_streak">—</span> day streak</span></article>
   </section>
 
   <div id="history-status" class="history-status" role="status">Loading your puzzle history…</div>

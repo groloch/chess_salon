@@ -1,6 +1,7 @@
 from . import ChessBoard
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Literal
 import requests
 
@@ -30,6 +31,7 @@ class BlindfoldPuzzleChessBoard(ChessBoard):
         self.history_store = history_store
         self.session_id = session_id
 
+        self.puzzle_started_at: datetime | None = None
         self.solution, self.rating, self.current_puzzle_id = self.fetch_next_puzzle()
         self.current_puzzle_ply = 0
         self.headers = {
@@ -68,6 +70,7 @@ class BlindfoldPuzzleChessBoard(ChessBoard):
         self.puzzle_start_fen = self.board.fen()
         self.puzzle_start_moves = self.move_history
         self.current_puzzle_ply = 0
+        self.puzzle_started_at = datetime.now(timezone.utc)
         if self.history_store is not None and self.session_id is not None:
             saved = self.history_store.set_session_puzzle(
                 self.session_id,
@@ -85,6 +88,12 @@ class BlindfoldPuzzleChessBoard(ChessBoard):
     def _record_attempt(self, success: bool) -> bool:
         if self.history_store is None:
             return True
+        completed_at = datetime.now(timezone.utc)
+        duration_ms = None
+        if self.puzzle_started_at is not None:
+            duration_ms = max(
+                0, int((completed_at - self.puzzle_started_at).total_seconds() * 1000)
+            )
         return self.history_store.record_attempt(
             puzzle_id=self.current_puzzle_id,
             rating=self.rating,
@@ -92,7 +101,9 @@ class BlindfoldPuzzleChessBoard(ChessBoard):
             fen=self.puzzle_start_fen,
             orientation=self.orientation,
             moves=self.puzzle_start_moves,
+            completed_at=completed_at,
             session_id=self.session_id,
+            duration_ms=duration_ms,
         )
 
     def is_correct(self, uci_move: str) -> bool:

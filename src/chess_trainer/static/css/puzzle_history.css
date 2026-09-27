@@ -124,6 +124,9 @@
 .stat-label, .stat-foot { display: block; color: #a7b4cb; font-size: .82rem; }
 .stat-card strong { display: block; margin: .45rem 0 .25rem; font-size: 2rem; line-height: 1.1; color: #fff; }
 .stat-foot { color: #8190a9; }
+.stat-trend { font-variant-numeric: tabular-nums; font-weight: 700; }
+.stat-trend.up { color: #6fe0aa; }
+.stat-trend.down { color: #ff8191; }
 .history-content {
   max-height: min(68vh, 820px);
   overflow: auto;
