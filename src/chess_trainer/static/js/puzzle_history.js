@@ -1,51 +1,23 @@
-import { Chessground } from '/static/dist/bundle.js';
+/**
+ * Blindfold puzzle dashboard.
+ *
+ * The initial layout, settings, and history are rendered server-side; this
+ * module wires the small shared dashboard modules (charts, range controls,
+ * board previews, dialogs, timestamps) and keeps the trainer-specific
+ * settings form and start request.
+ */
+import { renderLineCharts } from '/static/js/dashboard/charts.js';
+import { initRangeControls } from '/static/js/dashboard/range_controls.js';
+import { initBoardPreviews } from '/static/js/dashboard/board_previews.js';
+import { initDeletionDialog } from '/static/js/dashboard/deletion_dialog.js';
+import { initDialogs } from '/static/js/dashboard/dialog.js';
+import { localizeTimestamps } from '/static/js/dashboard/timestamps.js';
 
-const statusEl = document.getElementById('history-status');
-const contentEl = document.getElementById('history-content');
-const daysEl = document.getElementById('history-days');
-let progress = [];
-let rangeDays = '30';
-const settingsDialog = document.getElementById('puzzle-settings-dialog');
-const settingsForm = document.getElementById('puzzle-settings-form');
-const startButton = document.getElementById('start-puzzle-submit');
-const startError = document.getElementById('puzzle-start-error');
-const timedSessionInput = document.getElementById('timed-session');
-const durationField = document.querySelector('.duration-setting');
-const difficultyInputs = [...settingsForm.querySelectorAll('input[name="difficulties"]')];
-const depthMinInput = document.getElementById('depth-min');
-const depthMaxInput = document.getElementById('depth-max');
-const depthMinValue = document.getElementById('depth-min-value');
-const depthMaxValue = document.getElementById('depth-max-value');
-const mixPreview = document.getElementById('mix-preview');
-const presetButtons = [...document.querySelectorAll('[data-preset]')];
-
-const DIFFICULTY_ORDER = ['easiest', 'easier', 'normal', 'harder', 'hardest'];
-const DIFFICULTY_LABELS = {
-  easiest: 'Easiest', easier: 'Easier', normal: 'Normal', harder: 'Harder', hardest: 'Hardest',
-};
-const MAX_DEPTH = 15;
-const MIX_STORAGE_KEY = 'chessTrainer.puzzleMix';
-// Presets deliberately stay within easy/normal difficulties; harder/hardest
-// remain selectable by hand but are not offered as quick starts.
-const MIX_PRESETS = {
-  zen: { difficulties: ['easiest'], depth_min: 5, depth_max: 6 },
-  steady: { difficulties: ['easiest', 'easier'], depth_min: 9, depth_max: 11 },
-  build: { difficulties: ['easier'], depth_min: 9, depth_max: 11 },
-  deep: { difficulties: ['normal'], depth_min: 7, depth_max: 9 },
-};
-
-function localDay(isoTimestamp) {
-  const date = new Date(isoTimestamp);
-  return new Intl.DateTimeFormat(undefined, {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-  }).format(date);
-}
-
-function localTime(isoTimestamp) {
-  return new Intl.DateTimeFormat(undefined, {
-    hour: 'numeric', minute: '2-digit',
-  }).format(new Date(isoTimestamp));
-}
+// Chart rows are embedded by the template (tojson); range switching is instant.
+const progressData = document.getElementById('progress-data');
+const progress = progressData ? JSON.parse(progressData.textContent) : [];
+const chartContainer = document.getElementById('progress-charts');
+const rangeControls = document.querySelector('.range-controls');
 
 function formatDuration(ms) {
   if (!ms) return '—';
@@ -59,6 +31,50 @@ function formatDuration(ms) {
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
+const PROGRESS_CHARTS = [
+  { key: 'performance_rating', label: 'Performance', format: value => String(Math.round(value)), pad: 50 },
+  { key: 'average_rating', label: 'Average puzzle rating', format: value => String(Math.round(value)), pad: 50 },
+  { key: 'average_solve_time_ms', label: 'Average solve time', format: formatDuration, pad: 10000 },
+];
+
+if (chartContainer && rangeControls) {
+  const controls = initRangeControls(rangeControls, days => {
+    renderLineCharts(chartContainer, PROGRESS_CHARTS, progress, days);
+  });
+  renderLineCharts(chartContainer, PROGRESS_CHARTS, progress, controls.value);
+}
+
+initBoardPreviews();
+localizeTimestamps();
+
+const confirmDeletion = initDeletionDialog(document.getElementById('deletion-dialog'));
+const settingsDialog = document.getElementById('puzzle-settings-dialog');
+const settingsForm = document.getElementById('puzzle-settings-form');
+const startButton = document.getElementById('start-puzzle-submit');
+const startError = document.getElementById('puzzle-start-error');
+const timedSessionInput = document.getElementById('timed-session');
+const durationField = document.querySelector('.duration-setting');
+const difficultyInputs = [...settingsForm.querySelectorAll('input[name="difficulties"]')];
+const depthMinInput = document.getElementById('depth-min');
+const depthMaxInput = document.getElementById('depth-max');
+const depthRange = document.getElementById('depth-range');
+const depthMinValue = document.getElementById('depth-min-value');
+const depthMaxValue = document.getElementById('depth-max-value');
+const presetChips = document.getElementById('preset-chips');
+const addPresetButton = document.getElementById('add-preset-button');
+const presetSaveRow = document.getElementById('preset-save-row');
+const presetNameInput = document.getElementById('preset-name-input');
+const presetSaveConfirm = document.getElementById('preset-save-confirm');
+const presetError = document.getElementById('preset-error');
+
+const MAX_DEPTH = 15;
+const MIX_STORAGE_KEY = 'chessTrainer.puzzleMix';
+
+function loginUrl() {
+  const next = window.location.pathname + window.location.search;
+  return `/auth/login?next=${encodeURIComponent(next)}`;
+}
+
 function readMixFromForm() {
   let depthMin = Number(depthMinInput.value);
   let depthMax = Number(depthMaxInput.value);
@@ -70,22 +86,16 @@ function readMixFromForm() {
   };
 }
 
-function formatMix(mix) {
-  const difficulties = mix.difficulties || [];
-  const difficultyLabel = difficulties.length === DIFFICULTY_ORDER.length
-    ? 'all difficulties'
-    : difficulties.map(mode => DIFFICULTY_LABELS[mode] || mode).join(', ');
-  const depthLabel = mix.depth_min === mix.depth_max
-    ? `depth ${mix.depth_min}`
-    : `depth ${mix.depth_min}–${mix.depth_max}`;
-  if (difficulties.length === 1 && mix.depth_min === mix.depth_max) {
-    return `Fixed: ${difficultyLabel} · ${depthLabel}`;
-  }
-  return `Random draw from ${difficultyLabel} · ${depthLabel}`;
-}
-
-function updateMixPreview() {
-  if (mixPreview) mixPreview.textContent = formatMix(readMixFromForm());
+function updateDepthRange() {
+  const min = Number(depthMinInput.value);
+  const max = Number(depthMaxInput.value);
+  depthMinValue.textContent = min;
+  depthMaxValue.textContent = max;
+  depthRange.style.setProperty('--range-min', `${(min - 1) / (MAX_DEPTH - 1) * 100}%`);
+  depthRange.style.setProperty('--range-max', `${(max - 1) / (MAX_DEPTH - 1) * 100}%`);
+  depthRange.classList.toggle('is-single', min === max);
+  depthMinInput.setAttribute('aria-valuetext', `${min}, minimum depth`);
+  depthMaxInput.setAttribute('aria-valuetext', `${max}, maximum depth`);
 }
 
 function applyMix(mix) {
@@ -104,7 +114,7 @@ function applyMix(mix) {
   }
   depthMinValue.textContent = depthMinInput.value;
   depthMaxValue.textContent = depthMaxInput.value;
-  updateMixPreview();
+  updateDepthRange();
 }
 
 function saveMix() {
@@ -115,221 +125,91 @@ function saveMix() {
   }
 }
 
-function renderProgress() {
-    const container = document.getElementById('progress-charts');
-    const end = new Date();
-    const start = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
-    if (rangeDays === 'all') {
-        if (progress.length) start.setTime(Date.parse(`${progress[0].date}T00:00:00Z`));
-    } else {
-        start.setUTCDate(start.getUTCDate() - Number(rangeDays) + 1);
-    }
-    const endTime = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
-    const rows = progress.filter(row => Date.parse(`${row.date}T00:00:00Z`) >= start.getTime());
-    const metrics = [
-        ['performance_rating', 'Performance', value => String(value)],
-        ['average_rating', 'Average puzzle rating', value => String(value)],
-        ['average_solve_time_ms', 'Average solve time', formatDuration],
-    ];
-    container.replaceChildren();
-    const ns = 'http://www.w3.org/2000/svg';
-    const svgElement = (name, attrs) => {
-        const element = document.createElementNS(ns, name);
-        for (const [key, value] of Object.entries(attrs)) element.setAttribute(key, value);
-        return element;
-    };
-    for (const [key, label, format] of metrics) {
-        const card = document.createElement('article');
-        card.className = 'progress-card';
-        const heading = document.createElement('h4');
-        heading.textContent = label;
-        card.append(heading);
-        const points = rows.filter(row => row[key] !== null && Number.isFinite(row[key]));
-        if (!points.length) {
-            const empty = document.createElement('p');
-            empty.className = 'chart-empty';
-            empty.textContent = 'No data in this range';
-            card.append(empty);
-        } else {
-            const values = points.map(row => row[key]);
-            const low = Math.max(0, Math.min(...values) - (key.endsWith('_ms') ? 10000 : 50));
-            const high = Math.max(...values) + (key.endsWith('_ms') ? 10000 : 50);
-            const svg = svgElement('svg', { viewBox: '0 0 360 180', role: 'img', 'aria-label': `${label}, daily progression` });
-            for (const [value, y] of [[high, 22], [(high + low) / 2, 82], [low, 142]]) {
-                svg.append(svgElement('line', { x1: 54, x2: 348, y1: y, y2: y, class: 'chart-grid' }));
-                const text = svgElement('text', { x: 46, y: y + 4, 'text-anchor': 'end' });
-                text.textContent = format(Math.round(value));
-                svg.append(text);
-            }
-            const coords = points.map(row => [
-                54 + (Date.parse(`${row.date}T00:00:00Z`) - start.getTime()) / Math.max(86400000, endTime - start.getTime()) * 294,
-                142 - (row[key] - low) / (high - low) * 120,
-            ]);
-            svg.append(svgElement('polyline', { points: coords.map(p => p.join(',')).join(' '), class: 'chart-line' }));
-            points.forEach((row, index) => {
-                const dot = svgElement('circle', { cx: coords[index][0], cy: coords[index][1], r: 3, class: 'chart-point', tabindex: '0' });
-                const title = svgElement('title', {});
-                title.textContent = `${row.date}: ${format(row[key])}`;
-                dot.append(title);
-                dot.setAttribute('aria-label', title.textContent);
-                svg.append(dot);
-            });
-            for (const [timestamp, x, anchor] of [[start.getTime(), 54, 'start'], [endTime, 348, 'end']]) {
-                const text = svgElement('text', { x, y: 170, 'text-anchor': anchor });
-                text.textContent = new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit', timeZone: 'UTC' });
-                svg.append(text);
-            }
-            card.append(svg);
-        }
-        container.append(card);
-    }
+// Per-user presets, managed in the start dialog where they are applied.
+function showPresetError(message) {
+  presetError.textContent = message;
+  presetError.hidden = !message;
 }
 
-document.querySelectorAll('[data-days]').forEach(button => {
-    button.addEventListener('click', () => {
-        rangeDays = button.dataset.days;
-        document.querySelectorAll('[data-days]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
-        renderProgress();
+function renderPresets(presets) {
+  presetChips.replaceChildren();
+  for (const preset of presets) {
+    const wrap = document.createElement('span');
+    wrap.className = 'preset-chip-wrap';
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'preset-chip';
+    chip.textContent = preset.name;
+    chip.addEventListener('click', () => applyMix(preset.profile));
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'preset-chip-delete';
+    remove.setAttribute('aria-label', `Delete preset ${preset.name}`);
+    remove.textContent = '×';
+    remove.addEventListener('click', () => confirmDeletion(preset.name, () => deletePreset(preset.id)));
+    wrap.append(chip, remove);
+    presetChips.append(wrap);
+  }
+}
+
+async function loadPresets() {
+  try {
+    const response = await fetch('/api/puzzles/presets');
+    if (!response.ok) return; // 401 mid-session is handled by checkSignIn.
+    const payload = await response.json();
+    renderPresets(payload.presets || []);
+  } catch {
+    // Transient failure: leave the preset row as-is.
+  }
+}
+
+async function deletePreset(presetId) {
+  const response = await fetch(`/api/puzzles/presets/${encodeURIComponent(presetId)}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error('Could not delete preset');
+  await loadPresets();
+}
+
+function togglePresetSaveRow(show) {
+  presetSaveRow.hidden = !show;
+  addPresetButton.hidden = show;
+  if (show) presetNameInput.focus();
+}
+
+async function savePreset() {
+  const name = presetNameInput.value.trim();
+  if (!name) {
+    showPresetError('Enter a preset name.');
+    return;
+  }
+  try {
+    const response = await fetch('/api/puzzles/presets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, ...readMixFromForm() }),
     });
-});
+    const result = await response.json();
+    if (!response.ok) {
+      showPresetError(result.error || 'Could not save the preset.');
+      return;
+    }
+    presetNameInput.value = '';
+    showPresetError('');
+    togglePresetSaveRow(false);
+    await loadPresets();
+  } catch {
+    showPresetError('Could not save the preset. Please try again.');
+  }
+}
 
-function makePuzzleCard(entry) {
+function showSignInRequired(element) {
+  element.textContent = '';
   const link = document.createElement('a');
-  link.className = 'puzzle-card';
-  link.href = `https://lichess.org/training/${encodeURIComponent(entry.puzzle_id)}`;
-  link.target = '_blank';
-  link.rel = 'noopener noreferrer';
-  link.setAttribute('aria-label', `${entry.success ? 'Solved' : 'Failed'} puzzle rated ${entry.rating}, ${localTime(entry.completed_at)}. Open on Lichess.`);
-
-  const boardEl = document.createElement('div');
-  boardEl.className = 'mini-board';
-  const ground = Chessground(boardEl, {
-    fen: entry.fen,
-    orientation: entry.orientation,
-    coordinates: false,
-    viewOnly: true,
-    animation: { enabled: false },
-  });
-
-  const info = document.createElement('div');
-  info.className = 'puzzle-card-info';
-  const top = document.createElement('div');
-  top.className = 'puzzle-card-top';
-  const result = document.createElement('span');
-  const outcome = entry.outcome || (entry.success ? 'success' : 'failure');
-  result.className = `puzzle-result ${outcome}`;
-  result.textContent = outcome === 'success' ? '✓ Solved' : outcome === 'expired' ? '◷ Time' : '✕ Missed';
-  const rating = document.createElement('span');
-  rating.className = 'puzzle-rating';
-  rating.textContent = `♟ ${entry.rating}`;
-  top.append(result, rating);
-  const time = document.createElement('time');
-  time.className = 'puzzle-time';
-  time.dateTime = entry.completed_at;
-  time.textContent = entry.duration_ms
-    ? `${localTime(entry.completed_at)} · ${formatDuration(entry.duration_ms)}`
-    : localTime(entry.completed_at);
-  info.append(top, time);
-  link.append(boardEl, info);
-  return link;
-}
-
-function makeSessionFrame(session, entries) {
-  const frame = document.createElement('section');
-  frame.className = 'timed-history-frame';
-  const header = document.createElement('header');
-  header.className = 'timed-history-header';
-  const details = document.createElement('div');
-  details.className = 'timed-history-details';
-  const title = document.createElement('strong');
-  title.textContent = `${Math.round(session.duration_seconds / 60)} minute session`;
-  const settings = document.createElement('span');
-  settings.textContent = formatMix(session.profile || {
-    difficulties: [session.mode],
-    depth_min: session.blindfold_depth,
-    depth_max: session.blindfold_depth,
-  });
-  const when = document.createElement('time');
-  when.dateTime = session.started_at;
-  when.textContent = `${localTime(session.started_at)}${session.ended_at ? ` – ${localTime(session.ended_at)}` : ''}`;
-  details.append(title, settings, when);
-  const stats = document.createElement('div');
-  stats.className = 'timed-history-stats';
-  const visibleExpiredCount = Math.max(
-    session.expired_count,
-    entries.filter(entry => entry.outcome === 'expired').length,
-  );
-  stats.textContent = `${session.completed_count} completed · ${session.successes} solved · ${session.failures} missed · ${visibleExpiredCount} timed out`;
-  header.append(details, stats);
-  const grid = document.createElement('div');
-  grid.className = 'puzzle-grid';
-  for (const entry of entries) grid.appendChild(makePuzzleCard(entry));
-  if (!entries.length) {
-    const placeholder = document.createElement('p');
-    placeholder.className = 'session-no-puzzles';
-    placeholder.textContent = 'Session ended before any puzzle was completed.';
-    grid.appendChild(placeholder);
-  }
-  frame.append(header, grid);
-  return frame;
-}
-
-function renderHistory(entries, sessions) {
-  const groupedDays = new Map();
-  const ensureDay = (date) => {
-    const key = new Date(date).toLocaleDateString();
-    if (!groupedDays.has(key)) groupedDays.set(key, { date, entries: [], sessions: new Map() });
-    return groupedDays.get(key);
-  };
-
-  for (const session of sessions || []) {
-    ensureDay(session.started_at).sessions.set(session.id, { session, entries: [] });
-  }
-  for (const entry of entries) {
-    if (entry.session_id) {
-      const session = (sessions || []).find(item => item.id === entry.session_id);
-      if (session) {
-        ensureDay(session.started_at).sessions.get(session.id).entries.push(entry);
-        continue;
-      }
-    }
-    ensureDay(entry.completed_at).entries.push(entry);
-  }
-
-  daysEl.replaceChildren();
-  const days = [...groupedDays.values()].sort((a, b) => new Date(b.date) - new Date(a.date));
-  for (const day of days) {
-    const section = document.createElement('section');
-    section.className = 'history-day';
-    const heading = document.createElement('h3');
-    const date = document.createElement('span');
-    date.textContent = localDay(day.date);
-    const dayCount = day.entries.length + [...day.sessions.values()].reduce(
-      (total, group) => total + group.entries.length, 0,
-    );
-    const count = document.createElement('span');
-    count.className = 'day-count';
-    count.textContent = `${dayCount} ${dayCount === 1 ? 'puzzle' : 'puzzles'}`;
-    heading.append(date, count);
-    section.appendChild(heading);
-
-    if (day.entries.length) {
-      const grid = document.createElement('div');
-      grid.className = 'puzzle-grid';
-      for (const entry of day.entries) grid.appendChild(makePuzzleCard(entry));
-      section.appendChild(grid);
-    }
-    for (const { session, entries: sessionEntries } of day.sessions.values()) {
-      section.appendChild(makeSessionFrame(session, sessionEntries));
-    }
-    daysEl.appendChild(section);
-  }
-}
-
-function openSettings() {
-  startError.hidden = true;
-  startError.textContent = '';
-  settingsDialog.showModal();
+  link.href = loginUrl();
+  link.textContent = 'Sign in with Lichess to start training.';
+  element.appendChild(link);
+  element.hidden = false;
+  startButton.disabled = false;
+  startButton.textContent = 'Start training';
 }
 
 async function startPuzzle(event) {
@@ -381,83 +261,79 @@ async function startPuzzle(event) {
   }
 }
 
-function showSignInRequired(element) {
-  element.textContent = '';
-  const link = document.createElement('a');
-  link.href = '/auth/login';
-  link.textContent = 'Sign in with Lichess to start training.';
-  element.appendChild(link);
-  element.hidden = false;
-  startButton.disabled = false;
-  startButton.textContent = 'Start training';
-}
-
-async function loadHistory() {
+// Mid-session sign-out (token revoked while the page is open): keep an inline
+// sign-in link in the status area instead of reloading — see
+// _guidelines/_not_authentificated.md.
+async function checkSignIn() {
+  const statusEl = document.getElementById('history-status');
+  if (!statusEl) return;
   try {
     const response = await fetch('/api/puzzles/history');
     if (response.status === 401) {
-      statusEl.classList.remove('error');
-      statusEl.textContent = '';
+      statusEl.replaceChildren();
       const link = document.createElement('a');
-      link.href = '/auth/login';
+      link.href = loginUrl();
       link.textContent = 'Sign in with Lichess to see your puzzle history and start training.';
       statusEl.appendChild(link);
-      return;
+      statusEl.hidden = false;
     }
-    if (!response.ok) throw new Error(`Request failed (${response.status})`);
-    const payload = await response.json();
-    progress = payload.progress || [];
-    renderProgress();
-
-    if (!payload.history.length) {
-      statusEl.textContent = payload.sessions?.length
-        ? 'No completed puzzles yet. Timed sessions will appear here when they finish.'
-        : 'No completed puzzles yet. Finish a blindfold puzzle and it will show up here.';
-    }
-    if (!payload.history.length && !payload.sessions?.length) return;
-
-    renderHistory(payload.history, payload.sessions);
-    statusEl.hidden = true;
-    contentEl.hidden = false;
-  } catch (error) {
-    console.error('Could not load puzzle history:', error);
-    statusEl.textContent = 'Puzzle history could not be loaded. Please refresh to try again.';
-    statusEl.classList.add('error');
+  } catch {
+    // Transient failure: keep the server-rendered content.
   }
 }
+
+initDialogs({
+  onOpen(dialog) {
+    if (dialog !== settingsDialog) return;
+    startError.hidden = true;
+    startError.textContent = '';
+  },
+});
 
 timedSessionInput.addEventListener('change', () => {
   durationField.hidden = !timedSessionInput.checked;
 });
-document.getElementById('open-puzzle-settings').addEventListener('click', openSettings);
-document.getElementById('close-puzzle-settings').addEventListener('click', () => settingsDialog.close());
-document.getElementById('cancel-puzzle-settings').addEventListener('click', () => settingsDialog.close());
-settingsDialog.addEventListener('click', (event) => {
-  if (event.target === settingsDialog) settingsDialog.close();
-});
 settingsForm.addEventListener('submit', startPuzzle);
 
-difficultyInputs.forEach(input => input.addEventListener('change', updateMixPreview));
 depthMinInput.addEventListener('input', () => {
   if (Number(depthMinInput.value) > Number(depthMaxInput.value)) {
-    depthMaxInput.value = depthMinInput.value;
-  }
-  depthMinValue.textContent = depthMinInput.value;
-  depthMaxValue.textContent = depthMaxInput.value;
-  updateMixPreview();
-});
-depthMaxInput.addEventListener('input', () => {
-  if (Number(depthMaxInput.value) < Number(depthMinInput.value)) {
     depthMinInput.value = depthMaxInput.value;
   }
   depthMinValue.textContent = depthMinInput.value;
   depthMaxValue.textContent = depthMaxInput.value;
-  updateMixPreview();
+  updateDepthRange();
 });
-presetButtons.forEach(button => button.addEventListener('click', () => {
-  const preset = MIX_PRESETS[button.dataset.preset];
-  if (preset) applyMix(preset);
-}));
+depthMaxInput.addEventListener('input', () => {
+  if (Number(depthMaxInput.value) < Number(depthMinInput.value)) {
+    depthMaxInput.value = depthMinInput.value;
+  }
+  depthMinValue.textContent = depthMinInput.value;
+  depthMaxValue.textContent = depthMaxInput.value;
+  updateDepthRange();
+});
+depthRange.addEventListener('pointerdown', (event) => {
+  if (event.target.matches('input') || event.button !== 0) return;
+  const bounds = depthRange.getBoundingClientRect();
+  const fraction = Math.max(0, Math.min(1, (event.clientX - bounds.left - 10) / (bounds.width - 20)));
+  const value = Math.round(1 + fraction * (MAX_DEPTH - 1));
+  const min = Number(depthMinInput.value);
+  const max = Number(depthMaxInput.value);
+  const input = Math.abs(value - min) < Math.abs(value - max) || value < min
+    ? depthMinInput : depthMaxInput;
+  input.value = value;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.focus();
+});
+addPresetButton.addEventListener('click', () => togglePresetSaveRow(presetSaveRow.hidden));
+presetSaveConfirm.addEventListener('click', savePreset);
+presetNameInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    savePreset();
+  } else if (event.key === 'Escape') {
+    togglePresetSaveRow(false);
+  }
+});
 
 // Restore the last-used mix so returning players keep their settings.
 try {
@@ -466,6 +342,7 @@ try {
 } catch {
   // Ignore malformed or unavailable storage.
 }
-updateMixPreview();
+updateDepthRange();
 
-loadHistory();
+loadPresets();
+checkSignIn();

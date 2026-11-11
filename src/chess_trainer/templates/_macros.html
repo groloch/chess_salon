@@ -1,0 +1,50 @@
+{# Shared dashboard macros: panels, chart containers, range controls,
+   dialogs, and empty/error states. Trainer-specific cards and forms live in
+   partials/ and compose these macros. #}
+
+{% macro eyebrow(text) -%}
+<p class="eyebrow">{{ text }}</p>
+{%- endmacro %}
+
+{% macro panel(heading=None, aria_label=None) -%}
+<section class="panel"{% if aria_label %} aria-label="{{ aria_label }}"{% endif %}>
+  {%- if heading %}<h3 class="panel-title">{{ heading }}</h3>{% endif -%}
+  {{ caller() }}
+</section>
+{%- endmacro %}
+
+{% macro range_controls(group_label='Time range') -%}
+<div class="range-controls" role="group" aria-label="{{ group_label }}">
+  <button type="button" data-days="7" aria-pressed="false">7 days</button>
+  <button type="button" data-days="30" aria-pressed="true">30 days</button>
+  <button type="button" data-days="90" aria-pressed="false">90 days</button>
+  <button type="button" data-days="all" aria-pressed="false">All time</button>
+</div>
+{%- endmacro %}
+
+{% macro chart_panel(heading, container_id, note=None, range_label='Time range') -%}
+<section class="panel chart-panel" aria-labelledby="{{ container_id }}-title">
+  <div class="panel-toolbar">
+    <h3 class="panel-title" id="{{ container_id }}-title">{{ heading }}</h3>
+    {{ range_controls(range_label) }}
+  </div>
+  <div id="{{ container_id }}" class="chart-cards" data-chart-container aria-live="polite"></div>
+  {%- if note %}<p class="chart-note">{{ note }}</p>{% endif -%}
+</section>
+{%- endmacro %}
+
+{% macro dialog(id, title_id, heading, close_label='Close') -%}
+<dialog id="{{ id }}" class="settings-dialog" aria-labelledby="{{ title_id }}">
+  <div class="dialog-heading">
+    <div>
+      <h2 id="{{ title_id }}">{{ heading }}</h2>
+    </div>
+    <button class="dialog-close" type="button" data-dialog-close aria-label="{{ close_label }}">×</button>
+  </div>
+  {{ caller() }}
+</dialog>
+{%- endmacro %}
+
+{% macro status(message, id=None, kind=None, hidden=False) -%}
+<div{% if id %} id="{{ id }}"{% endif %} class="status{% if kind %} status-{{ kind }}{% endif %}" role="status"{% if hidden %} hidden{% endif %}>{{ message }}</div>
+{%- endmacro %}

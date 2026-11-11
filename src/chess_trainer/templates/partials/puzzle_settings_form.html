@@ -1,0 +1,59 @@
+{# Blindfold puzzle settings form. Wrapped by the shared dialog macro in the
+   dashboard's settings block; field ids are the contract with
+   js/puzzle_history.js. #}
+<form id="puzzle-settings-form">
+  <div class="setting-field presets-field">
+    <span class="field-label">Presets</span>
+    <div class="preset-chips" id="preset-chips" role="group" aria-label="Saved presets"></div>
+  </div>
+
+  <fieldset class="setting-field difficulty-field">
+    <legend>Difficulty</legend>
+    <div class="difficulty-chips">
+      <label class="difficulty-chip"><input type="checkbox" name="difficulties" value="easiest"><span>Easiest</span></label>
+      <label class="difficulty-chip"><input type="checkbox" name="difficulties" value="easier"><span>Easier</span></label>
+      <label class="difficulty-chip"><input type="checkbox" name="difficulties" value="normal" checked><span>Normal</span></label>
+      <label class="difficulty-chip"><input type="checkbox" name="difficulties" value="harder"><span>Harder</span></label>
+      <label class="difficulty-chip"><input type="checkbox" name="difficulties" value="hardest"><span>Hardest</span></label>
+    </div>
+  </fieldset>
+
+  <fieldset class="setting-field depth-range-field">
+    <legend>Blindfold depth</legend>
+    <div class="depth-values">
+      <label for="depth-min">Min <output id="depth-min-value" for="depth-min">9</output></label>
+      <label for="depth-max">Max <output id="depth-max-value" for="depth-max">9</output></label>
+    </div>
+    <div class="depth-slider-control">
+      <span class="depth-endpoint" aria-hidden="true">1</span>
+      <div class="depth-range" id="depth-range">
+        <div class="depth-range-track" aria-hidden="true"></div>
+        <input id="depth-min" name="depth_min" type="range" min="1" max="15" step="1" value="9" aria-label="Minimum blindfold depth">
+        <input id="depth-max" name="depth_max" type="range" min="1" max="15" step="1" value="9" aria-label="Maximum blindfold depth">
+      </div>
+      <span class="depth-endpoint" aria-hidden="true">15</span>
+    </div>
+  </fieldset>
+
+  <label class="timer-toggle" for="timed-session">
+    <input id="timed-session" name="timed" type="checkbox" value="true">
+    <span><strong>Timed session</strong></span>
+  </label>
+  <label class="setting-field duration-setting" for="session-duration" hidden>
+    <span>Session duration</span>
+    <div class="depth-input-wrap"><input id="session-duration" name="duration_minutes" type="number" min="1" max="180" step="1" value="30"><span>minutes</span></div>
+  </label>
+  <div class="preset-save-section">
+    <div class="preset-save-row" id="preset-save-row" hidden>
+      <input id="preset-name-input" type="text" maxlength="40" placeholder="Preset name" aria-label="Preset name" />
+      <button id="preset-save-confirm" class="secondary-button" type="button">Save</button>
+    </div>
+    <button id="add-preset-button" class="secondary-button" type="button">Save as preset</button>
+    <p id="preset-error" class="dialog-error" role="alert" hidden></p>
+  </div>
+  <p id="puzzle-start-error" class="dialog-error" role="alert" hidden></p>
+  <div class="dialog-actions">
+    <button id="cancel-puzzle-settings" class="secondary-button" type="button" data-dialog-close>Cancel</button>
+    <button id="start-puzzle-submit" class="primary-button" type="submit">Start training</button>
+  </div>
+</form>

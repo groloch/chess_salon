@@ -7,6 +7,8 @@
 <link rel="stylesheet" href="/static/css/chessground.brown.css" />
 <link rel="stylesheet" href="/static/css/chessground.cburnett.css" />
 <link rel="stylesheet" href="/static/css/board.css" />
+<link rel="stylesheet" href="/static/css/dashboard.css" />
+<link rel="stylesheet" href="/static/css/puzzle_history.css" />
 {% endblock %}
 
 {% block content %}
@@ -32,10 +34,11 @@
   <p id="session-over-summary" class="session-over-summary">The timer has run out.</p>
   <div class="dialog-actions">
     <button id="finish-training-button" class="secondary-button" type="button">Finish training</button>
-    <button id="continue-training-button" class="start-puzzle-button" type="button">Continue training</button>
+    <button id="continue-training-button" class="primary-button" type="button">Continue training</button>
   </div>
 </dialog>
+{% endblock %}
 
-<link rel="stylesheet" href="/static/css/puzzle_history.css" />
+{% block scripts %}
 <script src="/static/js/blind_puzzles.js" type="module"></script>
 {% endblock %}

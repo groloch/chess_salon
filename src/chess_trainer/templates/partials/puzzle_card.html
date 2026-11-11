@@ -1,0 +1,15 @@
+{# One history card. Expects `entry`: puzzle id, lichess url, fen, orientation,
+   outcome, outcome label, rating, completed-at ISO timestamp, duration text,
+   and a prebuilt aria label. The mini board is a placeholder initialized by
+   js/dashboard/board_previews.js; the text stays readable without JS. #}
+<a class="puzzle-card" href="{{ entry.url }}" target="_blank" rel="noopener noreferrer"
+   aria-label="{{ entry.aria_label }}">
+  <div class="mini-board" data-fen="{{ entry.fen }}" data-orientation="{{ entry.orientation }}"></div>
+  <div class="puzzle-card-info">
+    <div class="puzzle-card-top">
+      <span class="puzzle-result {{ entry.outcome }}">{{ entry.outcome_label }}</span>
+      <span class="puzzle-rating">{{ entry.rating }}</span>
+    </div>
+    <div class="puzzle-time"><time datetime="{{ entry.completed_at }}" data-format="time">{{ entry.completed_at }}</time>{% if entry.duration_text %} · {{ entry.duration_text }}{% endif %}</div>
+  </div>
+</a>

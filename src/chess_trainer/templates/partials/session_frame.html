@@ -1,0 +1,19 @@
+{# One timed-session frame inside a history day. Expects `group`: title,
+   mix label, started/ended ISO timestamps, stats text, and entry cards. #}
+<section class="timed-history-frame">
+  <header class="timed-history-header">
+    <div class="timed-history-details">
+      <strong>{{ group.title }}</strong>
+      <span>{{ group.mix_label }}</span>
+      <time datetime="{{ group.started_at }}" data-format="time">{{ group.started_at }}</time>{% if group.ended_at %} – <time datetime="{{ group.ended_at }}" data-format="time">{{ group.ended_at }}</time>{% endif %}
+    </div>
+    <div class="timed-history-stats">{{ group.stats_text }}</div>
+  </header>
+  <div class="puzzle-grid">
+    {%- for entry in group.entries %}
+    {% include "partials/puzzle_card.html" %}
+    {%- else %}
+    <p class="session-no-puzzles">Session ended before any puzzle was completed.</p>
+    {%- endfor %}
+  </div>
+</section>

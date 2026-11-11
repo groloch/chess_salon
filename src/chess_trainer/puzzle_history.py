@@ -152,6 +152,26 @@ def _migration_8_user_accounts(connection: sqlite3.Connection) -> None:
     )
 
 
+def _migration_9_puzzle_presets(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS puzzle_presets (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            profile_json TEXT NOT NULL,
+            is_default INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS puzzle_presets_user "
+        "ON puzzle_presets (user_id, is_default DESC, created_at)"
+    )
+    _add_column_if_missing(connection, 'users', 'presets_seeded', 'INTEGER NOT NULL DEFAULT 0')
+
+
 MIGRATIONS = {
     1: _migration_1_initial_schema,
     2: _migration_2_attempt_sessions,
@@ -161,9 +181,14 @@ MIGRATIONS = {
     6: _migration_6_session_profile,
     7: _migration_7_attempt_mix,
     8: _migration_8_user_accounts,
+    9: _migration_9_puzzle_presets,
 }
 
 SCHEMA_VERSION = max(MIGRATIONS)
+
+# Built-in default preset, seeded once per user and deletable like any other.
+DEFAULT_PRESET_NAME = 'Build'
+DEFAULT_PRESET_PROFILE = {'difficulties': ['easier'], 'depth_min': 9, 'depth_max': 11}
 
 
 def run_migrations(connection: sqlite3.Connection) -> None:
@@ -803,6 +828,78 @@ class PuzzleHistoryStore:
             'fastest_solve_ms': min(durations) if durations else 0,
             'expired_count': int(expired),
         }
+
+    # ---------- Per-user puzzle presets -------------------------------------
+
+    @staticmethod
+    def _preset_entry(row: sqlite3.Row) -> dict:
+        try:
+            profile = json.loads(row['profile_json'])
+        except (TypeError, ValueError):
+            profile = dict(DEFAULT_PRESET_PROFILE)
+        return {
+            'id': row['id'],
+            'name': row['name'],
+            'profile': profile,
+            'is_default': bool(row['is_default']),
+        }
+
+    def ensure_default_preset(self, user_id: str) -> None:
+        """Seed the built-in default preset once per user.
+
+        The ``presets_seeded`` flag on the user row makes the seeding
+        one-time, so deleting the default preset sticks.
+        """
+        with self._connect() as connection:
+            row = connection.execute(
+                'SELECT presets_seeded FROM users WHERE id = ?', (user_id,)
+            ).fetchone()
+            if row is None or row['presets_seeded']:
+                return
+            connection.execute(
+                "INSERT INTO puzzle_presets (id, user_id, name, profile_json, is_default, created_at) "
+                "VALUES (?, ?, ?, ?, 1, ?)",
+                (
+                    str(uuid.uuid4()), user_id, DEFAULT_PRESET_NAME,
+                    json.dumps(DEFAULT_PRESET_PROFILE), self._utc().isoformat(),
+                ),
+            )
+            connection.execute('UPDATE users SET presets_seeded = 1 WHERE id = ?', (user_id,))
+
+    def list_presets(self, user_id: str) -> list[dict]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM puzzle_presets WHERE user_id = ? "
+                "ORDER BY is_default DESC, created_at, id",
+                (user_id,),
+            ).fetchall()
+        return [self._preset_entry(row) for row in rows]
+
+    def save_preset(self, *, user_id: str, name: str, profile: dict, is_default: bool = False) -> dict:
+        """Store a named sampling profile for a user; returns the preset."""
+        preset_id = str(uuid.uuid4())
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO puzzle_presets (id, user_id, name, profile_json, is_default, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    preset_id, user_id, name, json.dumps(profile),
+                    int(is_default), self._utc().isoformat(),
+                ),
+            )
+            row = connection.execute(
+                'SELECT * FROM puzzle_presets WHERE id = ?', (preset_id,)
+            ).fetchone()
+        return self._preset_entry(row)
+
+    def delete_preset(self, preset_id: str, user_id: str) -> bool:
+        """Delete a preset owned by the user; returns whether a row was removed."""
+        with self._connect() as connection:
+            cursor = connection.execute(
+                'DELETE FROM puzzle_presets WHERE id = ? AND user_id = ?',
+                (preset_id, user_id),
+            )
+        return cursor.rowcount == 1
 
 
 # ---------------------------------------------------------------------------

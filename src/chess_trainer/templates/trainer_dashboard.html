@@ -1,0 +1,24 @@
+{# Shared trainer dashboard shell. Extends the application shell and exposes
+   explicit blocks for the trainer heading, primary training action, optional
+   overview (charts/stats), optional recent practice, settings dialog, and
+   page scripts. Omitted blocks leave no headings or empty space. #}
+{% extends "base.html" %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/dashboard.css" />
+{% block dashboard_head %}{% endblock %}
+{% endblock %}
+
+{% block content %}
+<section class="dashboard" aria-labelledby="dashboard-title">
+  <div class="dashboard-heading">
+    <h2 id="dashboard-title">{% block dashboard_title %}{% endblock %}</h2>
+    {% block dashboard_action %}{% endblock %}
+  </div>
+  {% block dashboard_overview %}{% endblock %}
+  {% block dashboard_history %}{% endblock %}
+</section>
+{% block settings %}{% endblock %}
+{% endblock %}
+
+{% block scripts %}{% block dashboard_scripts %}{% endblock %}{% endblock %}

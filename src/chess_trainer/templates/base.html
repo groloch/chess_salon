@@ -30,7 +30,9 @@
       color: var(--text);
       min-height: 100vh;
     }
-    header {
+    /* Scoped to .app-header so component <header> elements (e.g. session
+       frames on dashboards) are not styled as the application header. */
+    .app-header {
       background: var(--surface);
       padding: 1rem 2rem;
       display: flex;
@@ -38,37 +40,37 @@
       gap: 2rem;
       box-shadow: 0 2px 8px rgba(0,0,0,.4);
     }
-    header h1 { font-size: 1.4rem; }
+    .app-header h1 { font-size: 1.4rem; }
     .brand { color: var(--text); text-decoration: none; }
-    header nav { display: flex; flex-wrap: wrap; gap: .25rem; }
+    .app-header nav { display: flex; flex-wrap: wrap; gap: .25rem; }
     @media (max-width: 760px) {
-      header { padding: 1rem; gap: 1rem; flex-wrap: wrap; }
-      header nav { order: 3; width: 100%; }
+      .app-header { padding: 1rem; gap: 1rem; flex-wrap: wrap; }
+      .app-header nav { order: 3; width: 100%; }
     }
-    header nav a {
+    .app-header nav a {
       color: var(--text);
       text-decoration: none;
       padding: .4rem .8rem;
       border-radius: 4px;
       transition: background .2s;
     }
-    header nav a:hover { background: var(--primary); }
-    header .auth-widget {
+    .app-header nav a:hover { background: var(--primary); }
+    .app-header .auth-widget {
       margin-left: auto;
       display: flex;
       align-items: center;
       gap: .6rem;
       font-size: .95rem;
     }
-    header .auth-widget a.auth-signin {
-      color: #fff;
+    .app-header .auth-widget a.auth-signin {
+      color: var(--text);
       background: var(--accent);
       text-decoration: none;
       padding: .45rem .9rem;
       border-radius: 4px;
     }
-    header .auth-widget .auth-username { color: var(--text); font-weight: 600; }
-    header .auth-widget button.auth-logout {
+    .app-header .auth-widget .auth-username { color: var(--text); font-weight: 600; }
+    .app-header .auth-widget button.auth-logout {
       background: var(--primary);
       color: var(--text);
       border: none;
@@ -83,7 +85,7 @@
   {% block head %}{% endblock %}
 </head>
 <body>
-  <header>
+  <header class="app-header">
     <h1><a class="brand" href="/" aria-label="Chess Trainer home">Chess Trainer</a></h1>
     <nav>
       <a href="/analysis">Analysis Board</a>
@@ -95,5 +97,6 @@
     {% block content %}{% endblock %}
   </main>
   <script src="/static/js/auth.js" type="module"></script>
+  {% block scripts %}{% endblock %}
 </body>
 </html>

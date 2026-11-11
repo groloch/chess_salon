@@ -1,101 +1,63 @@
-{% extends "base.html" %}
+{% extends "trainer_dashboard.html" %}
+{% import "_macros.html" as ui %}
 
 {% block title %}Chess Trainer – Blindfold Puzzles{% endblock %}
 
-{% block head %}
+{% block dashboard_head %}
 <link rel="stylesheet" href="/static/css/chessground.base.css" />
 <link rel="stylesheet" href="/static/css/chessground.brown.css" />
 <link rel="stylesheet" href="/static/css/chessground.cburnett.css" />
 <link rel="stylesheet" href="/static/css/puzzle_history.css" />
 {% endblock %}
 
-{% block content %}
-<section class="history-dashboard" aria-labelledby="history-title">
-  <div class="history-heading">
-    <div>
-      <h2 id="history-title">Blindfold puzzles</h2>
-    </div>
-    <button id="open-puzzle-settings" class="start-puzzle-button" type="button">Start training <span aria-hidden="true">→</span></button>
+{% block dashboard_title %}Blindfold puzzles{% endblock %}
+
+{% block dashboard_action %}
+<button id="open-puzzle-settings" class="primary-button" type="button" data-dialog-open="puzzle-settings-dialog">Start training</button>
+{% endblock %}
+
+{% block dashboard_overview %}
+{% if progress %}
+{{ ui.chart_panel('Progress', 'progress-charts') }}
+<script type="application/json" id="progress-data">{{ progress | tojson }}</script>
+{% endif %}
+{% endblock %}
+
+{% block dashboard_history %}
+{% if days %}
+<section class="history-content" aria-label="Puzzle history by day">
+  <div class="history-days">
+    {%- for day in days %}
+    <section class="history-day">
+      <h3>
+        <time datetime="{{ day.date }}T00:00:00+00:00" data-format="date">{{ day.date }}</time>
+        <span class="day-count">{{ day.count }} {{ 'puzzle' if day.count == 1 else 'puzzles' }}</span>
+      </h3>
+      {%- if day.entries %}
+      <div class="puzzle-grid">
+        {%- for entry in day.entries %}
+        {% include "partials/puzzle_card.html" %}
+        {%- endfor %}
+      </div>
+      {%- endif %}
+      {%- for group in day.sessions %}
+      {% include "partials/session_frame.html" %}
+      {%- endfor %}
+    </section>
+    {%- endfor %}
   </div>
-
-  <section class="progress-section" aria-label="Training progression">
-    <div class="progress-toolbar">
-      <h3>Progress</h3>
-      <div class="chart-ranges" role="group" aria-label="Progress time range">
-        <button type="button" data-days="7" aria-pressed="false">7 days</button>
-        <button type="button" data-days="30" aria-pressed="true">30 days</button>
-        <button type="button" data-days="90" aria-pressed="false">90 days</button>
-        <button type="button" data-days="all" aria-pressed="false">All time</button>
-      </div>
-    </div>
-    <div id="progress-charts" class="progress-charts" aria-live="polite"></div>
-    <p class="chart-note">Daily averages · performance estimated from each day's results · UTC</p>
-  </section>
-
-  <div id="history-status" class="history-status" role="status">Loading your puzzle history…</div>
-  <section id="history-content" class="history-content" hidden>
-    <div id="history-days" class="history-days" aria-label="Puzzle history by day"></div>
-  </section>
 </section>
+{% endif %}
+{{ ui.status(empty_message, id='history-status', kind='empty', hidden=days | length > 0) }}
+{% endblock %}
 
-<dialog id="puzzle-settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
-  <form id="puzzle-settings-form">
-    <div class="dialog-heading">
-      <div>
-        <h2 id="settings-title">Puzzle settings</h2>
-      </div>
-      <button id="close-puzzle-settings" class="dialog-close" type="button" aria-label="Close settings">×</button>
-    </div>
-    <div class="setting-field">
-      <span>Presets</span>
-      <div class="preset-chips" role="group" aria-label="Quick start presets">
-        <button type="button" class="preset-chip" data-preset="zen">Zen</button>
-        <button type="button" class="preset-chip" data-preset="steady">Steady</button>
-        <button type="button" class="preset-chip" data-preset="build">Build</button>
-        <button type="button" class="preset-chip" data-preset="deep">Deep</button>
-      </div>
-    </div>
+{% block settings %}
+{% call ui.dialog('puzzle-settings-dialog', 'settings-title', 'Puzzle settings', close_label='Close settings') %}
+{% include "partials/puzzle_settings_form.html" %}
+{% endcall %}
+{% include "partials/deletion_dialog.html" %}
+{% endblock %}
 
-    <fieldset class="setting-field difficulty-field">
-      <legend>Difficulty</legend>
-      <p class="field-hint">Puzzles are drawn at random from your selection.</p>
-      <div class="difficulty-chips">
-        <label class="difficulty-chip"><input type="checkbox" name="difficulties" value="easiest"><span>Easiest</span></label>
-        <label class="difficulty-chip"><input type="checkbox" name="difficulties" value="easier"><span>Easier</span></label>
-        <label class="difficulty-chip"><input type="checkbox" name="difficulties" value="normal" checked><span>Normal</span></label>
-        <label class="difficulty-chip"><input type="checkbox" name="difficulties" value="harder"><span>Harder</span></label>
-        <label class="difficulty-chip"><input type="checkbox" name="difficulties" value="hardest"><span>Hardest</span></label>
-      </div>
-    </fieldset>
-
-    <div class="setting-field depth-range-field">
-      <span>Blindfold depth</span>
-      <div class="depth-slider-row">
-        <label for="depth-min">Min <output id="depth-min-value" for="depth-min">9</output></label>
-        <input id="depth-min" name="depth_min" type="range" min="1" max="15" step="1" value="9">
-      </div>
-      <div class="depth-slider-row">
-        <label for="depth-max">Max <output id="depth-max-value" for="depth-max">9</output></label>
-        <input id="depth-max" name="depth_max" type="range" min="1" max="15" step="1" value="9">
-      </div>
-      <small>How many moves to rewind before revealing the position. A range draws a random depth each puzzle.</small>
-    </div>
-
-    <div id="mix-preview" class="mix-preview" role="status" aria-live="polite"></div>
-    <label class="timer-toggle" for="timed-session">
-      <input id="timed-session" name="timed" type="checkbox" value="true">
-      <span><strong>Timed session</strong><small>Solve as many puzzles as you can before time runs out.</small></span>
-    </label>
-    <label class="setting-field duration-setting" for="session-duration" hidden>
-      <span>Session duration</span>
-      <div class="depth-input-wrap"><input id="session-duration" name="duration_minutes" type="number" min="1" max="180" step="1" value="30"><span>minutes</span></div>
-    </label>
-    <p id="puzzle-start-error" class="dialog-error" role="alert" hidden></p>
-    <div class="dialog-actions">
-      <button id="cancel-puzzle-settings" class="secondary-button" type="button">Cancel</button>
-      <button id="start-puzzle-submit" class="start-puzzle-button" type="submit">Start training</button>
-    </div>
-  </form>
-</dialog>
+{% block dashboard_scripts %}
 <script src="/static/js/puzzle_history.js" type="module"></script>
 {% endblock %}

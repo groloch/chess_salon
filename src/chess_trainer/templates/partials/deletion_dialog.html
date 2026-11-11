@@ -1,0 +1,9 @@
+{# Shared deletion confirmation; behavior and callback live in deletion_dialog.js. #}
+{% call ui.dialog('deletion-dialog', 'deletion-title', 'Delete preset?', close_label='Cancel deletion') %}
+<p class="deletion-message">Delete “<span data-deletion-name></span>”? This cannot be undone.</p>
+<p class="dialog-error" data-deletion-error role="alert" hidden></p>
+<div class="dialog-actions">
+  <button class="secondary-button" type="button" data-dialog-close autofocus>Cancel</button>
+  <button class="primary-button" type="button" data-deletion-confirm>Delete preset</button>
+</div>
+{% endcall %}

@@ -125,10 +125,10 @@ class UserStoreTests(unittest.TestCase):
     def tearDown(self):
         self.tempdir.cleanup()
 
-    def test_migration_8_adds_users_table_and_user_columns(self):
+    def test_migration_adds_users_and_presets_tables(self):
         store = PuzzleHistoryStore(self.db)
-        self.assertEqual(SCHEMA_VERSION, 8)
-        self.assertEqual(store.schema_version, 8)
+        self.assertEqual(SCHEMA_VERSION, 9)
+        self.assertEqual(store.schema_version, 9)
         with sqlite3.connect(self.db) as connection:
             tables = {
                 row[0] for row in connection.execute(
@@ -136,10 +136,13 @@ class UserStoreTests(unittest.TestCase):
                 )
             }
             self.assertIn('users', tables)
+            self.assertIn('puzzle_presets', tables)
             attempt_cols = {row[1] for row in connection.execute('PRAGMA table_info(puzzle_attempts)')}
             session_cols = {row[1] for row in connection.execute('PRAGMA table_info(puzzle_sessions)')}
+            user_cols = {row[1] for row in connection.execute('PRAGMA table_info(users)')}
         self.assertIn('user_id', attempt_cols)
         self.assertIn('user_id', session_cols)
+        self.assertIn('presets_seeded', user_cols)
 
     def test_token_is_encrypted_at_rest_and_decrypted_on_read(self):
         user = self.store.save_lichess_account(

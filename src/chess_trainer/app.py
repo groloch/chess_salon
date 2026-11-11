@@ -1,7 +1,7 @@
 '''Flask application for Chess Trainer.'''
 from datetime import datetime, timedelta, timezone
 import secrets
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import quote, urlsplit, urlunsplit
 
 from flask import Flask, jsonify, redirect, render_template, request
 from flask import session as flask_session
@@ -19,9 +19,124 @@ from .auth import (
 )
 from .boards import ChessBoard, board_mapping
 from .boards.puzzle_board import BlindfoldPuzzleChessBoard
-from .boards.puzzle_mix import PuzzleMix
+from .boards.puzzle_mix import DIFFICULTY_LABELS, DIFFICULTY_ORDER, PuzzleMix
 from .puzzle_history import PuzzleHistoryStore
 from .user_store import UserStore
+
+
+# ---------- Dashboard presentation data -------------------------------------
+# Dated dashboard data is grouped by UTC day; individual timestamps stay
+# semantic (<time datetime>) so the browser can localize them.
+
+OUTCOME_LABELS = {'success': 'Solved', 'failure': 'Missed', 'expired': 'Expired'}
+
+
+def _utc_day(iso_timestamp: str) -> str:
+    '''Return the UTC calendar day (YYYY-MM-DD) of an ISO timestamp.'''
+    moment = datetime.fromisoformat(iso_timestamp)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(timezone.utc).date().isoformat()
+
+
+def _format_duration_ms(duration_ms: int | None) -> str:
+    if not duration_ms:
+        return ''
+    minutes, seconds = divmod(round(duration_ms / 1000), 60)
+    if minutes >= 60:
+        return f'{minutes // 60}h {minutes % 60}m'
+    return f'{minutes}:{seconds:02d}'
+
+
+def _entry_card(entry: dict) -> dict:
+    '''View model for one puzzle history card.'''
+    outcome = entry.get('outcome') or ('success' if entry['success'] else 'failure')
+    label = OUTCOME_LABELS.get(outcome, outcome)
+    completed_at = entry['completed_at']
+    return {
+        'url': 'https://lichess.org/training/' + quote(str(entry['puzzle_id']), safe=''),
+        'aria_label': f'{label} puzzle rated {entry["rating"]} at {completed_at}. Open on Lichess.',
+        'fen': entry['fen'],
+        'orientation': entry['orientation'],
+        'outcome': outcome,
+        'outcome_label': label,
+        'rating': entry['rating'],
+        'completed_at': completed_at,
+        'duration_text': _format_duration_ms(entry.get('duration_ms')),
+    }
+
+
+def _mix_label(profile: dict | None, fallback_mode: str | None = None,
+               fallback_depth: int | None = None) -> str:
+    '''Human summary of a sampling profile, mirroring the settings preview.'''
+    profile = profile or {}
+    difficulties = profile.get('difficulties') or ([fallback_mode] if fallback_mode else [])
+    depth_min = profile.get('depth_min', fallback_depth)
+    depth_max = profile.get('depth_max', depth_min)
+    if len(difficulties) == len(DIFFICULTY_ORDER):
+        difficulty = 'all difficulties'
+    else:
+        difficulty = ', '.join(DIFFICULTY_LABELS.get(mode, mode) for mode in difficulties)
+    depth = f'depth {depth_min}' if depth_min == depth_max else f'depth {depth_min}–{depth_max}'
+    return f'{difficulty} · {depth}'
+
+
+def _session_group(session: dict, entries: list[dict]) -> dict:
+    '''View model for one timed-session frame in the history.'''
+    expired = max(
+        session.get('expired_count', 0),
+        sum(1 for entry in entries if entry['outcome'] == 'expired'),
+    )
+    return {
+        'id': session['id'],
+        'title': f"{round(session['duration_seconds'] / 60)} minute session",
+        'mix_label': _mix_label(
+            session.get('profile'), session.get('mode'), session.get('blindfold_depth')
+        ),
+        'started_at': session['started_at'],
+        'ended_at': session.get('ended_at'),
+        'stats_text': (
+            f"{session['completed_count']} completed · {session['successes']} solved · "
+            f"{session['failures']} missed · {expired} timed out"
+        ),
+        'entries': entries,
+    }
+
+
+def _group_history_by_utc_day(history: list[dict], sessions: list[dict]) -> list[dict]:
+    '''Group attempts and sessions into UTC days, newest first.'''
+    sessions_by_id = {session['id']: session for session in sessions}
+    days: dict[str, dict] = {}
+
+    def day_bucket(day: str) -> dict:
+        return days.setdefault(day, {'date': day, 'entries': [], 'sessions': {}})
+
+    for session in sessions:
+        bucket = day_bucket(_utc_day(session['started_at']))
+        bucket['sessions'][session['id']] = _session_group(session, [])
+    for entry in history:
+        session_id = entry.get('session_id')
+        if session_id and session_id in sessions_by_id:
+            session = sessions_by_id[session_id]
+            bucket = day_bucket(_utc_day(session['started_at']))
+            bucket['sessions'][session_id]['entries'].append(_entry_card(entry))
+        else:
+            day_bucket(_utc_day(entry['completed_at']))['entries'].append(_entry_card(entry))
+
+    grouped = []
+    for day in sorted(days, reverse=True):
+        bucket = days[day]
+        session_groups = sorted(
+            bucket['sessions'].values(), key=lambda group: group['started_at'], reverse=True
+        )
+        count = len(bucket['entries']) + sum(len(group['entries']) for group in session_groups)
+        grouped.append({
+            'date': day,
+            'entries': bucket['entries'],
+            'sessions': session_groups,
+            'count': count,
+        })
+    return grouped
 
 
 class ChessApp:
@@ -62,6 +177,9 @@ class ChessApp:
         # API
         self.app.add_url_rule('/api/board/<string:board_id>', 'api_get_board', self.api_get_board, methods=['GET'])
         self.app.add_url_rule('/api/puzzles/history', 'api_puzzle_history', self.api_puzzle_history, methods=['GET'])
+        self.app.add_url_rule('/api/puzzles/presets', 'api_list_presets', self.api_list_presets, methods=['GET'])
+        self.app.add_url_rule('/api/puzzles/presets', 'api_create_preset', self.api_create_preset, methods=['POST'])
+        self.app.add_url_rule('/api/puzzles/presets/<string:preset_id>', 'api_delete_preset', self.api_delete_preset, methods=['DELETE'])
         self.app.add_url_rule('/api/puzzles/session/<string:session_id>', 'api_puzzle_session', self.api_puzzle_session, methods=['GET'])
         self.app.add_url_rule('/api/puzzles/session/<string:session_id>/finish', 'api_finish_puzzle_session', self.api_finish_puzzle_session, methods=['POST'])
         self.app.add_url_rule('/api/puzzles/session/<string:session_id>/detach', 'api_detach_puzzle_session', self.api_detach_puzzle_session, methods=['POST'])
@@ -83,9 +201,10 @@ class ChessApp:
 
     def blind_puzzles(self):
         '''Blindfold puzzle landing page and history dashboard.'''
-        if self._current_user() is None:
+        user = self._current_user()
+        if user is None:
             return self._sign_in_wall()
-        return render_template('puzzle_history.html')
+        return self._render_puzzle_dashboard(user)
 
     def blind_puzzles_play(self):
         '''Active blindfold puzzle board.'''
@@ -95,9 +214,28 @@ class ChessApp:
 
     def puzzle_history_page(self):
         '''Legacy URL for the blindfold puzzle dashboard.'''
-        if self._current_user() is None:
+        user = self._current_user()
+        if user is None:
             return self._sign_in_wall()
-        return render_template('puzzle_history.html')
+        return self._render_puzzle_dashboard(user)
+
+    def _render_puzzle_dashboard(self, user: dict):
+        '''Render the blindfold dashboard with presentation data prepared here.'''
+        user_id = user['id']
+        history = self.puzzle_history.get_history(limit=500, user_id=user_id)
+        sessions = self.puzzle_history.get_sessions(user_id=user_id)
+        if history:
+            empty_message = ''
+        elif sessions:
+            empty_message = 'No completed puzzles yet. Timed sessions will appear here when they finish.'
+        else:
+            empty_message = 'No completed puzzles yet. Finish a blindfold puzzle and it will show up here.'
+        return render_template(
+            'puzzle_history.html',
+            progress=self.puzzle_history.get_progress(user_id=user_id),
+            days=_group_history_by_utc_day(history, sessions),
+            empty_message=empty_message,
+        )
 
     def openings(self):
         '''Openings trainer page.'''
@@ -278,6 +416,38 @@ class ChessApp:
             history=self.puzzle_history.get_history(limit=500, user_id=user['id']),
             sessions=self.puzzle_history.get_sessions(user_id=user['id']),
         )
+
+    def api_list_presets(self):
+        user = self._current_user()
+        if user is None:
+            return self._sign_in_required()
+        self.puzzle_history.ensure_default_preset(user['id'])
+        return jsonify(presets=self.puzzle_history.list_presets(user['id']))
+
+    def api_create_preset(self):
+        user = self._current_user()
+        if user is None:
+            return self._sign_in_required()
+        data = request.get_json(silent=True) or {}
+        name = str(data.get('name') or '').strip()
+        if not name or len(name) > 40:
+            return jsonify(ok=False, error='Preset name must be 1–40 characters.'), 400
+        try:
+            mix = PuzzleMix.from_payload(data)
+        except ValueError as error:
+            return jsonify(ok=False, error=str(error)), 400
+        preset = self.puzzle_history.save_preset(
+            user_id=user['id'], name=name, profile=mix.to_payload(),
+        )
+        return jsonify(ok=True, preset=preset), 201
+
+    def api_delete_preset(self, preset_id: str):
+        user = self._current_user()
+        if user is None:
+            return self._sign_in_required()
+        if not self.puzzle_history.delete_preset(preset_id, user['id']):
+            return jsonify(ok=False, error='Preset not found.'), 404
+        return jsonify(ok=True)
 
     def _owned_session(self, session_id: str) -> dict | None:
         '''Return the session only if it belongs to the signed-in user.'''

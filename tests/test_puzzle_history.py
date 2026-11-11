@@ -612,5 +612,253 @@ class PuzzleHistoryCliTests(unittest.TestCase):
         self.assertEqual(store.schema_version, SCHEMA_VERSION)
 
 
+class PuzzleDashboardPageTests(unittest.TestCase):
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        root = Path(self.tempdir.name)
+        self.app_wrapper = ChessApp(
+            env_path=str(root / '.env'),
+            database_path=str(root / 'history.sqlite3'),
+        )
+        self.user = self.app_wrapper.user_store.save_lichess_account(
+            lichess_id='dash-1', username='Dash', access_token='test-token',
+        )
+        self.other = self.app_wrapper.user_store.save_lichess_account(
+            lichess_id='dash-2', username='Other', access_token='other-token',
+        )
+        self.client = self.app_wrapper.app.test_client()
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = self.user['id']
+
+    def tearDown(self):
+        self.tempdir.cleanup()
+
+    def _client_for(self, user):
+        client = self.app_wrapper.app.test_client()
+        with client.session_transaction() as sess:
+            sess['user_id'] = user['id']
+        return client
+
+    def test_anonymous_gets_sign_in_wall_on_both_routes(self):
+        anonymous = self.app_wrapper.app.test_client()
+        for path in ('/blind_puzzles', '/puzzle_history'):
+            response = anonymous.get(path)
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(b'Sign in with Lichess', response.data)
+            self.assertNotIn(b'id="progress-data"', response.data)
+            self.assertNotIn(b'puzzle-card', response.data)
+
+    def test_dashboard_renders_history_server_side_grouped_by_utc_day(self):
+        store = self.app_wrapper.puzzle_history
+        store.record_attempt(
+            puzzle_id='card-one', rating=1500, success=True, fen='fen-one',
+            orientation='white', moves=[], duration_ms=95000,
+            completed_at=datetime(2025, 3, 1, 23, 30, tzinfo=timezone.utc),
+            user_id=self.user['id'],
+        )
+        store.record_attempt(
+            puzzle_id='card-two', rating=1600, success=False, fen='fen-two',
+            orientation='black', moves=[],
+            completed_at=datetime(2025, 3, 2, 0, 30, tzinfo=timezone.utc),
+            user_id=self.user['id'],
+        )
+        store.record_attempt(
+            puzzle_id='other-user-card', rating=2500, success=True, fen='fen-x',
+            orientation='white', moves=[],
+            completed_at=datetime(2025, 3, 1, 12, 0, tzinfo=timezone.utc),
+            user_id=self.other['id'],
+        )
+        for path in ('/blind_puzzles', '/puzzle_history'):
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 200)
+            html = response.get_data(as_text=True)
+            self.assertIn('Blindfold puzzles', html)
+            # Server-rendered cards and UTC day headings, no JS-built markup.
+            self.assertIn('puzzle-card', html)
+            self.assertIn('card-one', html)
+            self.assertIn('datetime="2025-03-01T00:00:00+00:00"', html)
+            self.assertIn('datetime="2025-03-02T00:00:00+00:00"', html)
+            # Chart data embedded via tojson.
+            self.assertIn('id="progress-data"', html)
+            self.assertIn('performance_rating', html)
+            # User isolation: the other user's puzzle never leaks.
+            self.assertNotIn('other-user-card', html)
+
+    def test_dashboard_renders_timed_session_frame(self):
+        store = self.app_wrapper.puzzle_history
+        started = datetime(2025, 3, 1, 10, 0, tzinfo=timezone.utc)
+        session = store.start_session(30, started_at=started, user_id=self.user['id'])
+        self.assertTrue(store.set_session_puzzle(
+            session['id'], puzzle_id='session-puzzle', rating=1400,
+            fen='fen-s', orientation='white', moves=[], now=started,
+        ))
+        store.record_attempt(
+            puzzle_id='session-puzzle', rating=1400, success=True, fen='fen-s',
+            orientation='white', moves=[], session_id=session['id'],
+            completed_at=started + timedelta(minutes=10), user_id=self.user['id'],
+        )
+        store.end_session(session['id'], now=started + timedelta(minutes=20))
+        html = self.client.get('/blind_puzzles').get_data(as_text=True)
+        self.assertIn('timed-history-frame', html)
+        self.assertIn('30 minute session', html)
+        self.assertIn('1 completed · 1 solved · 0 missed · 0 timed out', html)
+        self.assertIn('session-puzzle', html)
+        self.assertIn('Easiest · depth 9', html)
+        self.assertNotIn('Fixed:', html)
+        self.assertNotIn('Random draw', html)
+
+    def test_dashboard_escapes_user_data(self):
+        store = self.app_wrapper.puzzle_history
+        store.record_attempt(
+            puzzle_id='<script>alert(1)</script>', rating=1200, success=True,
+            fen='fen"><b>x</b>', orientation='white', moves=[],
+            completed_at=datetime(2025, 3, 1, 12, 0, tzinfo=timezone.utc),
+            user_id=self.user['id'],
+        )
+        html = self.client.get('/blind_puzzles').get_data(as_text=True)
+        self.assertNotIn('<script>alert(1)</script>', html)
+        # The puzzle id only appears URL-quoted inside the Lichess link.
+        self.assertIn('training/%3Cscript%3Ealert%281%29%3C%2Fscript%3E', html)
+        self.assertNotIn('fen"><b>x</b>', html)
+        self.assertIn('data-fen="fen&#34;&gt;&lt;b&gt;x&lt;/b&gt;"', html)
+
+    def test_empty_dashboard_has_status_and_no_chart_section(self):
+        html = self._client_for(self.other).get('/blind_puzzles').get_data(as_text=True)
+        self.assertIn('No completed puzzles yet.', html)
+        self.assertIn('id="history-status"', html)
+        self.assertNotIn('id="progress-data"', html)
+        self.assertNotIn('history-day', html)
+
+    def test_sessions_without_attempts_get_their_own_empty_message(self):
+        store = self.app_wrapper.puzzle_history
+        started = datetime(2025, 3, 1, 10, 0, tzinfo=timezone.utc)
+        session = store.start_session(30, started_at=started, user_id=self.other['id'])
+        store.end_session(session['id'], now=started + timedelta(minutes=5))
+        html = self._client_for(self.other).get('/blind_puzzles').get_data(as_text=True)
+        self.assertIn('Timed sessions will appear here when they finish.', html)
+
+
+class PuzzlePresetStoreTests(unittest.TestCase):
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.store = PuzzleHistoryStore(Path(self.tempdir.name) / 'history.sqlite3')
+
+    def tearDown(self):
+        self.tempdir.cleanup()
+
+    def test_presets_are_scoped_per_user(self):
+        first = self.store.save_preset(
+            user_id='u1', name='One',
+            profile={'difficulties': ['normal'], 'depth_min': 9, 'depth_max': 9},
+        )
+        self.store.save_preset(
+            user_id='u2', name='Two',
+            profile={'difficulties': ['easiest'], 'depth_min': 5, 'depth_max': 6},
+        )
+        presets = self.store.list_presets('u1')
+        self.assertEqual([p['name'] for p in presets], ['One'])
+        self.assertEqual(presets[0]['profile']['difficulties'], ['normal'])
+        self.assertFalse(presets[0]['is_default'])
+        # Deletion is ownership-checked.
+        self.assertFalse(self.store.delete_preset(first['id'], 'u2'))
+        self.assertTrue(self.store.delete_preset(first['id'], 'u1'))
+        self.assertEqual(self.store.list_presets('u1'), [])
+
+    def test_ensure_default_preset_ignores_unknown_user(self):
+        self.store.ensure_default_preset('no-such-user')
+        self.assertEqual(self.store.list_presets('no-such-user'), [])
+
+
+class PuzzlePresetApiTests(unittest.TestCase):
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        root = Path(self.tempdir.name)
+        self.app_wrapper = ChessApp(
+            env_path=str(root / '.env'),
+            database_path=str(root / 'history.sqlite3'),
+        )
+        self.user = self.app_wrapper.user_store.save_lichess_account(
+            lichess_id='preset-1', username='PresetOne', access_token='test-token',
+        )
+        self.other = self.app_wrapper.user_store.save_lichess_account(
+            lichess_id='preset-2', username='PresetTwo', access_token='other-token',
+        )
+        self.client = self.app_wrapper.app.test_client()
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = self.user['id']
+
+    def tearDown(self):
+        self.tempdir.cleanup()
+
+    def _client_for(self, user):
+        client = self.app_wrapper.app.test_client()
+        with client.session_transaction() as sess:
+            sess['user_id'] = user['id']
+        return client
+
+    def test_anonymous_presets_require_sign_in(self):
+        anonymous = self.app_wrapper.app.test_client()
+        self.assertEqual(anonymous.get('/api/puzzles/presets').status_code, 401)
+        self.assertEqual(anonymous.post('/api/puzzles/presets', json={'name': 'x'}).status_code, 401)
+        self.assertEqual(anonymous.delete('/api/puzzles/presets/whatever').status_code, 401)
+
+    def test_default_preset_is_seeded_once_and_deletable(self):
+        payload = self.client.get('/api/puzzles/presets').get_json()
+        self.assertEqual(len(payload['presets']), 1)
+        default = payload['presets'][0]
+        self.assertEqual(default['name'], 'Build')
+        self.assertTrue(default['is_default'])
+        self.assertEqual(default['profile'], {'difficulties': ['easier'], 'depth_min': 9, 'depth_max': 11})
+        # Deleting the default sticks: it is not re-seeded on the next list.
+        response = self.client.delete(f"/api/puzzles/presets/{default['id']}")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.get('/api/puzzles/presets').get_json()['presets'], [])
+
+    def test_create_list_and_delete_preset(self):
+        response = self.client.post('/api/puzzles/presets', json={
+            'name': 'My mix',
+            'difficulties': ['normal', 'harder'],
+            'depth_min': 5,
+            'depth_max': 10,
+        })
+        self.assertEqual(response.status_code, 201)
+        preset = response.get_json()['preset']
+        self.assertEqual(preset['name'], 'My mix')
+        self.assertEqual(
+            preset['profile'],
+            {'difficulties': ['normal', 'harder'], 'depth_min': 5, 'depth_max': 10},
+        )
+        names = [p['name'] for p in self.client.get('/api/puzzles/presets').get_json()['presets']]
+        self.assertEqual(names, ['Build', 'My mix'])
+
+        # The other user cannot see or delete it.
+        other_client = self._client_for(self.other)
+        other_names = [p['name'] for p in other_client.get('/api/puzzles/presets').get_json()['presets']]
+        self.assertEqual(other_names, ['Build'])
+        self.assertEqual(other_client.delete(f"/api/puzzles/presets/{preset['id']}").status_code, 404)
+
+        self.assertEqual(self.client.delete(f"/api/puzzles/presets/{preset['id']}").status_code, 200)
+        self.assertEqual(self.client.delete(f"/api/puzzles/presets/{preset['id']}").status_code, 404)
+
+    def test_create_preset_validates_name_and_profile(self):
+        for payload in (
+            {'difficulties': ['normal'], 'depth_min': 9, 'depth_max': 9},  # no name
+            {'name': 'x' * 41, 'difficulties': ['normal'], 'depth_min': 9, 'depth_max': 9},
+            {'name': 'bad', 'difficulties': ['impossible'], 'depth_min': 9, 'depth_max': 9},
+            {'name': 'bad', 'difficulties': ['normal'], 'depth_min': 0, 'depth_max': 5},
+        ):
+            response = self.client.post('/api/puzzles/presets', json=payload)
+            self.assertEqual(response.status_code, 400, payload)
+            self.assertIn('error', response.get_json())
+        # Legacy fixed profile payloads are still accepted.
+        response = self.client.post('/api/puzzles/presets', json={
+            'name': 'Legacy', 'mode': 'harder', 'blindfold_depth': 12,
+        })
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.get_json()['preset']['profile'], {
+            'difficulties': ['harder'], 'depth_min': 12, 'depth_max': 12,
+        })
+
+
 if __name__ == '__main__':
     unittest.main()

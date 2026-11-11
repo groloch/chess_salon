@@ -1,168 +1,8 @@
-.history-dashboard {
-  max-width: 1240px;
-  margin: 0 auto;
-}
-.history-heading {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 1.5rem;
-  margin-bottom: 1.6rem;
-}
-.history-heading h2 {
-  margin: .25rem 0 .45rem;
-  font-size: clamp(1.8rem, 4vw, 2.5rem);
-  letter-spacing: -.04em;
-}
-.eyebrow {
-  color: var(--text-subtle);
-  font-size: .72rem;
-  font-weight: 700;
-  letter-spacing: .16em;
-}
-.history-intro { color: var(--text-muted); line-height: 1.5; }
-.start-puzzle-button {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: .65rem;
-  padding: .82rem 1.15rem;
-  border: 1px solid var(--accent-light);
-  border-radius: 11px;
-  color: #fff;
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
-  box-shadow: 0 7px 18px rgba(224,17,95,.2);
-  transition: transform .16s ease, filter .16s ease;
-}
-.start-puzzle-button:hover { transform: translateY(-1px); filter: brightness(1.08); }
-.start-puzzle-button:disabled { opacity: .65; cursor: wait; transform: none; }
-.settings-dialog {
-  width: min(92vw, 480px);
-  max-width: none;
-  margin: auto;
-  padding: 1.5rem;
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  color: var(--text);
-  background: var(--surface);
-  box-shadow: 0 24px 80px rgba(0,0,0,.55);
-}
-.settings-dialog::backdrop { background: rgba(20, 22, 23, .76); backdrop-filter: blur(5px); }
-.dialog-heading { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.4rem; }
-.dialog-heading h2 { margin-top: .3rem; font-size: 1.55rem; }
-.dialog-close {
-  width: 2rem; height: 2rem; border: 0; border-radius: 50%; color: var(--text-muted);
-  font-size: 1.5rem; line-height: 1; cursor: pointer; background: var(--surface-raised);
-}
-.dialog-close:hover { color: white; background: var(--primary); }
-.setting-field { display: block; margin: 1.05rem 0; }
-.setting-field > span { display: block; margin-bottom: .5rem; font-weight: 650; }
-.setting-field select, .setting-field input {
-  width: 100%; min-height: 2.8rem; padding: .65rem .75rem; border: 1px solid var(--border);
-  border-radius: 9px; color: var(--text); font: inherit; background: var(--surface-inset);
-}
-.setting-field select:focus, .setting-field input:focus { outline: 2px solid var(--focus); outline-offset: 1px; }
-.setting-field small { display: block; margin-top: .42rem; color: var(--text-subtle); line-height: 1.45; }
-.timer-toggle {
-  display: flex; align-items: flex-start; gap: .75rem; margin: 1.4rem 0 1rem; padding: .9rem;
-  border: 1px solid var(--border); border-radius: 10px; cursor: pointer; background: var(--surface-raised);
-}
-.timer-toggle input { width: 1.1rem; height: 1.1rem; margin-top: .12rem; accent-color: var(--accent); }
-.timer-toggle strong, .timer-toggle small { display: block; }
-.timer-toggle small { margin-top: .28rem; color: var(--text-subtle); line-height: 1.4; }
-.duration-setting[hidden] { display: none; }
-.depth-input-wrap { position: relative; }
-.depth-input-wrap input { padding-right: 4.5rem; }
-.depth-input-wrap > span { position: absolute; top: 50%; right: .8rem; color: var(--text-subtle); transform: translateY(-50%); }
-.preset-chips { display: flex; flex-wrap: wrap; gap: .5rem; }
-.preset-chip {
-  padding: .5rem .85rem; border: 1px solid var(--border); border-radius: 999px;
-  color: var(--text-muted); font: inherit; font-size: .85rem; font-weight: 600;
-  cursor: pointer; background: var(--surface-inset);
-  transition: border-color .15s ease, background .15s ease, color .15s ease;
-}
-.preset-chip:hover { border-color: var(--focus); background: var(--primary); color: #fff; }
-.difficulty-field { border: 0; padding: 0; }
-.difficulty-field legend { margin-bottom: .5rem; font-weight: 650; }
-.field-hint { margin: -.1rem 0 .55rem; color: var(--text-subtle); font-size: .82rem; line-height: 1.4; }
-.difficulty-chips { display: flex; flex-wrap: wrap; gap: .5rem; }
-.difficulty-chip { position: relative; cursor: pointer; }
-.difficulty-chip input {
-  position: absolute; opacity: 0; width: 1px; height: 1px; min-height: 0; padding: 0;
-}
-.difficulty-chip span {
-  display: inline-block; padding: .5rem .85rem; border: 1px solid var(--border); border-radius: 999px;
-  color: var(--text-muted); font-size: .85rem; font-weight: 600; background: var(--surface-inset);
-  transition: border-color .15s ease, background .15s ease, color .15s ease;
-}
-.difficulty-chip input:checked + span {
-  border-color: var(--accent-light); color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-deep));
-}
-.difficulty-chip input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
-.depth-range-field .depth-slider-row { display: flex; align-items: center; gap: .75rem; margin: .35rem 0; }
-.depth-slider-row label { flex: 0 0 4.5rem; color: var(--text-muted); font-size: .85rem; font-weight: 600; }
-.depth-slider-row output { color: #fff; font-variant-numeric: tabular-nums; }
-.depth-slider-row input[type="range"] {
-  flex: 1; width: auto; min-height: auto; padding: 0; background: transparent; accent-color: var(--accent);
-}
-.mix-preview {
-  margin: .9rem 0 .3rem; padding: .65rem .8rem;
-  border: 1px solid var(--border); border-radius: 10px;
-  color: var(--text); font-size: .88rem; line-height: 1.45; background: var(--surface-raised);
-}
-.dialog-error { margin: 1rem 0 0; color: var(--accent-light); font-size: .9rem; line-height: 1.45; }
-.dialog-actions { display: flex; justify-content: flex-end; gap: .65rem; margin-top: 1.6rem; }
-.secondary-button {
-  padding: .72rem .95rem; border: 1px solid var(--border); border-radius: 9px; color: var(--text-muted);
-  font: inherit; cursor: pointer; background: transparent;
-}
-.secondary-button:hover { background: var(--surface-raised); }
-.dialog-actions .start-puzzle-button { padding: .72rem .95rem; }
-.session-over-summary { margin: 0; color: var(--text-muted); line-height: 1.55; }
-.timed-session-status {
-  width: min(90vw, 720px);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: .8rem 1rem;
-  border: 1px solid var(--primary);
-  border-radius: 11px;
-  background: linear-gradient(120deg, var(--primary), var(--surface));
-}
-.timed-session-status[hidden] { display: none; }
-.timed-session-status > div { display: flex; align-items: baseline; gap: .75rem; }
-.session-eyebrow { color: var(--text-muted); font-size: .68rem; font-weight: 750; letter-spacing: .12em; }
-#session-countdown { color: var(--text); font-size: 1.45rem; font-variant-numeric: tabular-nums; }
-#session-progress { color: var(--text-muted); font-size: .82rem; }
-.timed-session-status.time-low { border-color: var(--accent-light); background: linear-gradient(120deg, var(--accent-deep), var(--surface)); }
-.timed-session-status.time-low #session-countdown { color: var(--accent-light); }
-.puzzle-dashboard-link { color: var(--text-muted); text-decoration: none; }
-.puzzle-dashboard-link:hover { color: white; }
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: .85rem;
-  margin-bottom: 1.5rem;
-}
-.stat-card {
-  min-height: 126px;
-  padding: 1rem 1.15rem;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: linear-gradient(145deg, var(--surface-raised), var(--surface));
-  box-shadow: 0 8px 24px rgba(0,0,0,.12);
-}
-.stat-label, .stat-foot { display: block; color: var(--text-muted); font-size: .82rem; }
-.stat-card strong { display: block; margin: .45rem 0 .25rem; font-size: 2rem; line-height: 1.1; color: #fff; }
-.stat-foot { color: var(--text-subtle); }
-.stat-trend { font-variant-numeric: tabular-nums; font-weight: 700; }
-.stat-trend.up { color: var(--success); }
-.stat-trend.down { color: var(--accent-light); }
+/* Blindfold puzzle trainer styles: history days, puzzle cards, timed-session
+   frames, the settings form fields, and the play-page session status. Shared
+   dashboard/dialog/chart styles live in dashboard.css. */
+
+/* ── history by UTC day ───────────────────────────────────────── */
 .history-content {
   max-height: min(68vh, 820px);
   overflow: auto;
@@ -180,7 +20,7 @@
   padding: .75rem .25rem;
   color: var(--text);
   font-size: 1rem;
-  background: rgba(53, 56, 57, .96);
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
 .day-count { color: var(--text-subtle); font-size: .78rem; font-weight: 400; }
@@ -220,12 +60,16 @@
 .puzzle-result.expired { color: var(--warning); }
 .puzzle-rating { color: var(--text-muted); font-size: .76rem; font-variant-numeric: tabular-nums; }
 .puzzle-time { display: block; margin-top: .35rem; color: var(--text-subtle); font-size: .72rem; }
+
+/* ── timed-session frames in the history ──────────────────────── */
 .timed-history-frame {
   margin: .85rem 0;
   padding: .85rem;
   border: 1px solid var(--border);
   border-radius: 14px;
-  background: linear-gradient(145deg, rgba(63,67,69,.92), rgba(41,44,45,.95));
+  background: linear-gradient(145deg,
+    color-mix(in srgb, var(--surface-raised) 92%, transparent),
+    color-mix(in srgb, var(--surface) 95%, transparent));
 }
 .timed-history-header {
   display: flex;
@@ -241,22 +85,105 @@
 .timed-history-stats { text-align: right; line-height: 1.5; }
 .timed-history-frame .puzzle-grid { padding-top: .1rem; }
 .session-no-puzzles { grid-column: 1 / -1; padding: .5rem .2rem; color: var(--text-muted); font-size: .82rem; }
-.history-status {
-  padding: 2rem 1.2rem;
-  border: 1px dashed var(--border);
-  border-radius: 14px;
-  color: var(--text-muted);
-  text-align: center;
-  background: rgba(41,44,45,.65);
+
+/* Settings: quiet controls with one clear primary action. */
+.setting-field { display: block; margin: 1.35rem 0; }
+.setting-field > span, .setting-field legend { margin-bottom: .65rem; font-weight: 600; }
+.setting-field > span { display: block; }
+.setting-field select, .setting-field input:not([type="checkbox"]):not([type="range"]) {
+  width: 100%; min-height: 2.6rem; padding: .6rem .75rem;
+  border: 1px solid var(--border); border-radius: 5px;
+  color: var(--text); font: inherit; background: var(--surface-inset);
 }
-.history-status.error { color: var(--accent-light); border-color: var(--accent); }
+#puzzle-settings-form :focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+#puzzle-settings-dialog { width: min(480px, calc(100vw - 2rem)); border-radius: 10px; }
+#puzzle-settings-dialog .primary-button {
+  background: var(--accent); border-color: var(--accent); border-radius: 5px; box-shadow: none;
+  font-weight: 600; transform: none;
+}
+#puzzle-settings-dialog .secondary-button {
+  border-radius: 5px; background: transparent; box-shadow: none; font-size: .88rem;
+}
+#puzzle-settings-dialog .dialog-actions { border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 1.5rem; }
+.presets-field { padding-bottom: 1.1rem; border-bottom: 1px solid var(--border); }
+.preset-chips { display: flex; flex-wrap: wrap; gap: .5rem; }
+.preset-chips:empty { display: none; }
+.preset-chip-wrap { display: inline-flex; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; }
+.preset-chip, .preset-chip-delete {
+  border: 0; border-radius: 0; color: var(--text-muted); font: inherit;
+  background: transparent; cursor: pointer;
+}
+.preset-chip { padding: .45rem .65rem; font-size: .85rem; }
+.preset-chip-delete { padding: .4rem .6rem; border-left: 1px solid var(--border); }
+.preset-chip:hover, .preset-chip-delete:hover { background: var(--surface-raised); color: var(--text); }
+.preset-save-row { display: flex; gap: .5rem; margin-top: .6rem; }
+.preset-save-row input { flex: 1; min-width: 0; }
+.preset-save-row[hidden], #add-preset-button[hidden], .duration-setting[hidden] { display: none; }
+#puzzle-settings-dialog #add-preset-button { margin-top: 0; padding: .25rem 0; border: 0; text-decoration: underline; text-underline-offset: 3px; }
+.difficulty-field, .depth-range-field { border: 0; padding: 0; min-width: 0; }
+.difficulty-chips { display: flex; flex-wrap: wrap; gap: .5rem 1rem; }
+.difficulty-chip { display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; padding: .3rem 0; }
+.difficulty-chip input, .timer-toggle input { width: 1rem; height: 1rem; margin: 0; accent-color: var(--accent); }
+.difficulty-chip span { color: var(--text-muted); font-size: .88rem; }
+.difficulty-chip input:checked + span { color: var(--text); }
+.depth-values { display: flex; justify-content: space-between; color: var(--text-muted); font-size: .8rem; }
+.depth-values output { margin-left: .35rem; color: var(--text); font-variant-numeric: tabular-nums; font-weight: 600; }
+.depth-range { position: relative; height: 36px; margin: .25rem 0; cursor: pointer; --range-min: 57.14%; --range-max: 57.14%; }
+.depth-range-track { position: absolute; top: 16px; left: 10px; right: 10px; height: 4px; border-radius: 2px;
+  background: linear-gradient(to right, var(--border) var(--range-min), var(--accent) var(--range-min), var(--accent) var(--range-max), var(--border) var(--range-max)); }
+.depth-range input[type="range"] {
+  position: absolute; inset: 0; width: 100%; height: 36px; margin: 0; padding: 0; border: 0;
+  appearance: none; -webkit-appearance: none; background: transparent; pointer-events: none;
+}
+.depth-range input[type="range"]::-webkit-slider-thumb {
+  appearance: none; width: 20px; height: 20px; border: 2px solid var(--text-muted); border-radius: 50%;
+  background: var(--surface); pointer-events: auto; cursor: ew-resize;
+}
+.depth-range input[type="range"]::-moz-range-thumb {
+  width: 16px; height: 16px; border: 2px solid var(--text-muted); border-radius: 50%;
+  background: var(--surface); pointer-events: auto; cursor: ew-resize;
+}
+.depth-range input:focus-visible { z-index: 2; }
+.depth-range input:focus-visible::-webkit-slider-thumb { border-color: var(--focus); }
+.depth-range input:focus-visible::-moz-range-thumb { border-color: var(--focus); }
+.depth-range.is-single #depth-min::-webkit-slider-thumb { transform: translateX(-7px); }
+.depth-range.is-single #depth-max::-webkit-slider-thumb { transform: translateX(7px); }
+.depth-range.is-single #depth-min::-moz-range-thumb { transform: translateX(-7px); }
+.depth-range.is-single #depth-max::-moz-range-thumb { transform: translateX(7px); }
+.depth-slider-control { display: flex; align-items: center; gap: .5rem; }
+.depth-slider-control .depth-range { flex: 1; min-width: 0; }
+.depth-endpoint { color: var(--text-subtle); font-size: .8rem; font-variant-numeric: tabular-nums; }
+.preset-save-section { margin-top: 1.25rem; }
+.timer-toggle { display: flex; align-items: center; gap: .65rem; margin: 1.25rem 0; padding-top: 1.1rem; border-top: 1px solid var(--border); cursor: pointer; }
+.timer-toggle strong { font-size: .9rem; font-weight: 500; }
+.depth-input-wrap { position: relative; }
+.depth-input-wrap input { padding-right: 5rem !important; }
+.depth-input-wrap > span { position: absolute; top: 50%; right: .8rem; color: var(--text-subtle); transform: translateY(-50%); }
+
+/* ── play page: timed-session status and session-over dialog ──── */
+.session-over-summary { margin: 0; color: var(--text-muted); line-height: 1.55; }
+.timed-session-status {
+  width: min(90vw, 720px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .8rem 1rem;
+  border: 1px solid var(--primary);
+  border-radius: 11px;
+  background: linear-gradient(120deg, var(--primary), var(--surface));
+}
+.timed-session-status[hidden] { display: none; }
+.timed-session-status > div { display: flex; align-items: baseline; gap: .75rem; }
+.session-eyebrow { color: var(--text-muted); font-size: .68rem; font-weight: 750; letter-spacing: .12em; }
+#session-countdown { color: var(--text); font-size: 1.45rem; font-variant-numeric: tabular-nums; }
+#session-progress { color: var(--text-muted); font-size: .82rem; }
+.timed-session-status.time-low { border-color: var(--accent-light); background: linear-gradient(120deg, var(--accent-deep), var(--surface)); }
+.timed-session-status.time-low #session-countdown { color: var(--accent-light); }
+.puzzle-dashboard-link { color: var(--text-muted); text-decoration: none; }
+.puzzle-dashboard-link:hover { color: var(--text); }
+
 @media (max-width: 760px) {
-  main { padding: 1.1rem; }
-  .history-heading { align-items: flex-start; flex-direction: column; }
-  .history-heading .start-puzzle-button { width: 100%; }
-  .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .stat-card { min-height: 112px; padding: .85rem; }
-  .stat-card strong { font-size: 1.7rem; }
   .history-content { max-height: 70vh; }
   .timed-history-header { flex-direction: column; }
   .timed-history-stats { text-align: left; }
@@ -266,24 +193,8 @@
   .puzzle-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; }
 }
 
-.history-heading h2 { margin: 0; font-size: clamp(1.5rem, 3vw, 2rem); }
-.progress-section { margin-bottom: 2rem; }
-.progress-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
-.progress-toolbar h3 { font-size: 1rem; font-weight: 500; color: var(--text-muted); }
-.chart-ranges { display: flex; gap: .25rem; flex-wrap: wrap; }
-.chart-ranges button { padding: .4rem .65rem; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--text-muted); font: inherit; font-size: .8rem; cursor: pointer; }
-.chart-ranges button:hover { background: var(--surface-raised); }
-.chart-ranges button[aria-pressed="true"] { background: var(--surface); border-color: var(--border); color: var(--text); }
-.progress-charts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
-.progress-card { min-width: 0; padding: 1rem; background: var(--surface); border-radius: 10px; }
-.progress-card h4 { font-size: .85rem; font-weight: 500; color: var(--text-muted); margin-bottom: .75rem; }
-.progress-card svg { display: block; width: 100%; overflow: visible; }
-.progress-card svg text { fill: var(--text-subtle); font-size: 11px; }
-.chart-grid { stroke: var(--border); stroke-opacity: .3; }
-.chart-line { fill: none; stroke: var(--focus); stroke-width: 2; stroke-linejoin: round; }
-.chart-point { fill: var(--focus); }
-.chart-point:focus { outline: none; stroke: var(--text); stroke-width: 3; }
-.chart-note { margin-top: .65rem; color: var(--text-subtle); font-size: .75rem; }
-.chart-empty { min-height: 150px; display: grid; place-items: center; color: var(--text-subtle); font-size: .85rem; }
-@media (max-width: 900px) { .progress-charts { grid-template-columns: 1fr; } }
-@media (max-width: 480px) { .progress-toolbar { align-items: flex-start; flex-direction: column; } }
+/* Confirmation uses the settings shell above the open configuration dialog. */
+#deletion-dialog { width: min(400px, calc(100vw - 2rem)); border-radius: 10px; }
+#deletion-dialog .deletion-message { color: var(--text-muted); line-height: 1.5; overflow-wrap: anywhere; }
+#deletion-dialog .primary-button { background: var(--accent); border-radius: 5px; box-shadow: none; transform: none; }
+#deletion-dialog .secondary-button { border-radius: 5px; }
