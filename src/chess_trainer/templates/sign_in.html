@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Chess Trainer – Sign in{% endblock %}
+
+{% block head %}
+<style>
+  .sign-in-wall {
+    max-width: 520px;
+    margin: 5rem auto;
+    padding: 2.5rem 2.5rem 2rem;
+    text-align: center;
+    background: var(--surface);
+    border: 1px solid #2c3a5c;
+    border-radius: 16px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.35);
+  }
+  .sign-in-wall .eyebrow {
+    color: #8fa6c8;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .16em;
+  }
+  .sign-in-wall h2 {
+    margin: .5rem 0 .8rem;
+    font-size: 1.9rem;
+    letter-spacing: -.03em;
+  }
+  .sign-in-wall .sign-in-copy {
+    color: #abb8ce;
+    line-height: 1.55;
+    margin-bottom: 1.6rem;
+  }
+  .sign-in-wall .sign-in-button {
+    display: inline-block;
+    padding: .85rem 1.6rem;
+    border-radius: 11px;
+    background: linear-gradient(135deg, #e94560, #c72f52);
+    border: 1px solid #ff7185;
+    color: #fff;
+    font-weight: 700;
+    font-size: 1.05rem;
+    text-decoration: none;
+    box-shadow: 0 7px 18px rgba(233,69,96,.2);
+    transition: transform .16s ease, filter .16s ease;
+  }
+  .sign-in-wall .sign-in-button:hover { transform: translateY(-1px); filter: brightness(1.08); }
+  .sign-in-wall .sign-in-button:focus-visible { outline: 2px solid #ff7185; outline-offset: 3px; }
+  .sign-in-wall .sign-in-alt {
+    margin-top: 1.4rem;
+    font-size: .9rem;
+    color: #8fa6c8;
+  }
+  .sign-in-wall .sign-in-alt a { color: #c3d2ea; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="sign-in-wall" aria-labelledby="sign-in-title">
+  <p class="eyebrow">BLINDFOLD TRAINING</p>
+  <h2 id="sign-in-title">Blindfold puzzles</h2>
+  <p class="sign-in-copy">
+    Your puzzle history, stats and timed sessions live with your Lichess account —
+    sign in to start training.
+  </p>
+  <a class="sign-in-button" href="/auth/login?next={{ next | urlencode }}" autofocus>Sign in with Lichess</a>
+  <p class="sign-in-alt">
+    The <a href="/analysis">analysis board</a> and <a href="/openings">openings trainer</a>
+    work without an account.
+  </p>
+</section>
+{% endblock %}

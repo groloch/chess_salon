@@ -7,10 +7,16 @@
 
 const widget = document.getElementById('auth-widget');
 
+// Send the user back to the current page after the OAuth round-trip.
+function loginUrl() {
+    const next = window.location.pathname + window.location.search;
+    return `/auth/login?next=${encodeURIComponent(next)}`;
+}
+
 function renderSignIn() {
     widget.replaceChildren();
     const link = document.createElement('a');
-    link.href = '/auth/login';
+    link.href = loginUrl();
     link.className = 'auth-signin';
     link.textContent = 'Sign in with Lichess';
     widget.appendChild(link);

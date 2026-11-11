@@ -370,6 +370,68 @@ class AppAuthFlowTests(unittest.TestCase):
         self.assertEqual([e['puzzle_id'] for e in response.json['history']], ['mine'])
         self.assertEqual(response.json['stats']['completed'], 1)
 
+    def test_safe_next_accepts_only_local_paths(self):
+        safe = ChessApp._safe_next
+        self.assertEqual(safe('/blind_puzzles'), '/blind_puzzles')
+        self.assertEqual(safe('/blind_puzzles/play?session_id=abc'), '/blind_puzzles/play?session_id=abc')
+        for bad in (None, '', 'evil.com', '//evil.com', '/\\evil.com',
+                    'https://evil.com', 'http://localhost:23777/blind_puzzles', '  /x'):
+            self.assertIsNone(safe(bad), bad)
+
+    def test_gated_pages_show_sign_in_wall_when_anonymous(self):
+        for url in ('/blind_puzzles', '/blind_puzzles/play?session_id=abc', '/puzzle_history'):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200, url)
+            body = response.get_data(as_text=True)
+            self.assertIn('Sign in with Lichess', body)
+            self.assertIn('sign-in-wall', body)
+            # The dashboard / board markup must not leak to anonymous users.
+            self.assertNotIn('puzzle-settings-dialog', body)
+            self.assertNotIn('id="board"', body)
+            self.assertNotIn('history-dashboard', body)
+        # The wall offers to return to the exact page after signing in.
+        body = self.client.get('/blind_puzzles/play?session_id=abc').get_data(as_text=True)
+        self.assertIn('/auth/login?next=/blind_puzzles/play%3Fsession_id%3Dabc', body)
+
+    def test_gated_pages_render_normally_when_signed_in(self):
+        self._sign_in()
+        body = self.client.get('/blind_puzzles').get_data(as_text=True)
+        self.assertIn('puzzle-settings-dialog', body)
+        self.assertNotIn('sign-in-wall', body)
+        body = self.client.get('/blind_puzzles/play?session_id=abc').get_data(as_text=True)
+        self.assertIn('id="board"', body)
+        self.assertNotIn('sign-in-wall', body)
+
+    def test_login_stores_next_and_callback_redirects_to_it(self):
+        self.client.get('/auth/login?next=/blind_puzzles/play%3Fsession_id%3Dabc')
+        with self.client.session_transaction() as sess:
+            self.assertEqual(sess['post_login_next'], '/blind_puzzles/play?session_id=abc')
+            state = sess['oauth_state']
+        with patch('chess_trainer.app.exchange_code', return_value={'access_token': 'tok'}), \
+                patch('chess_trainer.app.fetch_account', return_value={'id': 'li-1', 'username': 'Tester'}):
+            response = self.client.get(f'/auth/callback?code=abc&state={state}')
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers['Location'], '/blind_puzzles/play?session_id=abc')
+
+    def test_callback_ignores_unsafe_next(self):
+        for bad in ('//evil.com', 'https://evil.com'):
+            self.client.get(f'/auth/login?next={bad}')
+            with self.client.session_transaction() as sess:
+                self.assertNotIn('post_login_next', sess)
+                state = sess['oauth_state']
+            with patch('chess_trainer.app.exchange_code', return_value={'access_token': 'tok'}), \
+                    patch('chess_trainer.app.fetch_account', return_value={'id': 'li-1', 'username': 'Tester'}):
+                response = self.client.get(f'/auth/callback?code=abc&state={state}')
+            self.assertEqual(response.headers['Location'], '/blind_puzzles')
+
+    def test_login_from_ip_preserves_next_in_host_redirect(self):
+        response = self.client.get('/auth/login?next=/blind_puzzles', base_url='http://127.0.0.1:23777')
+        self.assertEqual(response.status_code, 302)
+        location = urlparse(response.headers['Location'])
+        self.assertEqual((location.scheme, location.netloc, location.path),
+                         ('http', 'localhost:23777', '/auth/login'))
+        self.assertEqual(parse_qs(location.query)['next'], ['/blind_puzzles'])
+
 
 if __name__ == '__main__':
     unittest.main()

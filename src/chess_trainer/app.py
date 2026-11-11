@@ -83,14 +83,20 @@ class ChessApp:
 
     def blind_puzzles(self):
         '''Blindfold puzzle landing page and history dashboard.'''
+        if self._current_user() is None:
+            return self._sign_in_wall()
         return render_template('puzzle_history.html')
 
     def blind_puzzles_play(self):
         '''Active blindfold puzzle board.'''
+        if self._current_user() is None:
+            return self._sign_in_wall()
         return render_template('blind_puzzles.html')
 
     def puzzle_history_page(self):
         '''Legacy URL for the blindfold puzzle dashboard.'''
+        if self._current_user() is None:
+            return self._sign_in_wall()
         return render_template('puzzle_history.html')
 
     def openings(self):
@@ -112,6 +118,25 @@ class ChessApp:
     def _sign_in_required(self):
         return jsonify(ok=False, error='sign_in_required', login_url='/auth/login'), 401
 
+    @staticmethod
+    def _safe_next(value) -> str | None:
+        '''Return a local path usable as a post-login redirect, else None.'''
+        if not value or not isinstance(value, str):
+            return None
+        parsed = urlsplit(value)
+        if parsed.scheme or parsed.netloc or not value.startswith('/'):
+            return None
+        if value.startswith('//') or value.startswith('/\\'):
+            return None
+        return value
+
+    def _sign_in_wall(self):
+        '''Minimal sign-in page for fully gated pages (see _guidelines/_not_authentificated.md).'''
+        next_path = request.full_path
+        if next_path.endswith('?'):
+            next_path = next_path[:-1]
+        return render_template('sign_in.html', next=next_path)
+
     def _lichess_client(self, user: dict) -> tuple[Client, str]:
         '''Return the cached berserk client and decrypted token for a user.'''
         cached = self._clients.get(user['id'])
@@ -128,10 +153,19 @@ class ChessApp:
             return jsonify(ok=False, error='LICHESS_CLIENT_ID is not configured on this server.'), 500
         # Start on the callback's host so the browser sends the same session
         # cookie back (localhost and 127.0.0.1 have separate cookie jars).
+        # Keep the query string so ?next= survives the host normalization.
         callback = urlsplit(config.lichess_redirect_uri)
         current = urlsplit(request.url)
         if (current.scheme, current.hostname) != (callback.scheme, callback.hostname):
-            return redirect(urlunsplit((callback.scheme, callback.netloc, '/auth/login', '', '')))
+            return redirect(urlunsplit((
+                callback.scheme, callback.netloc, '/auth/login',
+                request.query_string.decode('ascii', 'replace'), '',
+            )))
+        next_url = self._safe_next(request.args.get('next'))
+        if next_url:
+            flask_session['post_login_next'] = next_url
+        else:
+            flask_session.pop('post_login_next', None)
         verifier, challenge = generate_pkce_pair()
         state = secrets.token_urlsafe(24)
         flask_session['oauth_state'] = state
@@ -185,10 +219,12 @@ class ChessApp:
         # first account that signs in on this machine.
         self.user_store.claim_legacy_history(user['id'])
         self._clients.pop(user['id'], None)
+        # Read before the clear: the wall page stored where to return to.
+        next_url = self._safe_next(flask_session.pop('post_login_next', None))
         flask_session.clear()
         flask_session['user_id'] = user['id']
         flask_session.permanent = True
-        return redirect('/blind_puzzles')
+        return redirect(next_url or '/blind_puzzles')
 
     def auth_logout(self):
         '''Clear the local session and best-effort revoke the Lichess token.'''
