@@ -10,12 +10,12 @@
     padding: 2.5rem 2.5rem 2rem;
     text-align: center;
     background: var(--surface);
-    border: 1px solid #2c3a5c;
+    border: 1px solid var(--border);
     border-radius: 16px;
     box-shadow: 0 12px 40px rgba(0,0,0,.35);
   }
   .sign-in-wall .eyebrow {
-    color: #8fa6c8;
+    color: var(--text-subtle);
     font-size: .72rem;
     font-weight: 700;
     letter-spacing: .16em;
@@ -26,7 +26,7 @@
     letter-spacing: -.03em;
   }
   .sign-in-wall .sign-in-copy {
-    color: #abb8ce;
+    color: var(--text-muted);
     line-height: 1.55;
     margin-bottom: 1.6rem;
   }
@@ -34,23 +34,23 @@
     display: inline-block;
     padding: .85rem 1.6rem;
     border-radius: 11px;
-    background: linear-gradient(135deg, #e94560, #c72f52);
-    border: 1px solid #ff7185;
+    background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+    border: 1px solid var(--accent-light);
     color: #fff;
     font-weight: 700;
     font-size: 1.05rem;
     text-decoration: none;
-    box-shadow: 0 7px 18px rgba(233,69,96,.2);
+    box-shadow: 0 7px 18px rgba(224,17,95,.2);
     transition: transform .16s ease, filter .16s ease;
   }
   .sign-in-wall .sign-in-button:hover { transform: translateY(-1px); filter: brightness(1.08); }
-  .sign-in-wall .sign-in-button:focus-visible { outline: 2px solid #ff7185; outline-offset: 3px; }
+  .sign-in-wall .sign-in-button:focus-visible { outline: 2px solid var(--accent-light); outline-offset: 3px; }
   .sign-in-wall .sign-in-alt {
     margin-top: 1.4rem;
     font-size: .9rem;
-    color: #8fa6c8;
+    color: var(--text-subtle);
   }
-  .sign-in-wall .sign-in-alt a { color: #c3d2ea; }
+  .sign-in-wall .sign-in-alt a { color: var(--focus); }
 </style>
 {% endblock %}
 

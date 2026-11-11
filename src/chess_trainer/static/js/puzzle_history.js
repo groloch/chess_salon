@@ -3,10 +3,8 @@ import { Chessground } from '/static/dist/bundle.js';
 const statusEl = document.getElementById('history-status');
 const contentEl = document.getElementById('history-content');
 const daysEl = document.getElementById('history-days');
-const statElements = Object.fromEntries(
-  [...document.querySelectorAll('[data-stat]')].map(el => [el.dataset.stat, el])
-);
-const recentTrendEl = document.getElementById('recent-trend');
+let progress = [];
+let rangeDays = '30';
 const settingsDialog = document.getElementById('puzzle-settings-dialog');
 const settingsForm = document.getElementById('puzzle-settings-form');
 const startButton = document.getElementById('start-puzzle-submit');
@@ -117,33 +115,83 @@ function saveMix() {
   }
 }
 
-function displayStats(stats) {
-  const hasData = (stats.completed ?? 0) > 0;
-  for (const [key, element] of Object.entries(statElements)) {
-    const value = stats[key] ?? 0;
-    const isRate = key.endsWith('_rate');
-    if (!hasData && (isRate || key.endsWith('_ms') || key === 'performance_rating')) {
-      element.textContent = '—';
-    } else if (isRate) {
-      element.textContent = `${value}%`;
-    } else if (key.endsWith('_ms')) {
-      element.textContent = formatDuration(value);
+function renderProgress() {
+    const container = document.getElementById('progress-charts');
+    const end = new Date();
+    const start = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
+    if (rangeDays === 'all') {
+        if (progress.length) start.setTime(Date.parse(`${progress[0].date}T00:00:00Z`));
     } else {
-      element.textContent = `${value}`;
+        start.setUTCDate(start.getUTCDate() - Number(rangeDays) + 1);
     }
-  }
-  if (recentTrendEl) {
-    const trend = stats.recent_trend;
-    if (!hasData || trend === null || trend === undefined || trend === 0) {
-      recentTrendEl.textContent = '';
-      recentTrendEl.className = 'stat-trend';
-    } else {
-      const up = trend > 0;
-      recentTrendEl.textContent = `${up ? '▲' : '▼'} ${Math.abs(trend)}`;
-      recentTrendEl.className = `stat-trend ${up ? 'up' : 'down'}`;
+    const endTime = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
+    const rows = progress.filter(row => Date.parse(`${row.date}T00:00:00Z`) >= start.getTime());
+    const metrics = [
+        ['performance_rating', 'Performance', value => String(value)],
+        ['average_rating', 'Average puzzle rating', value => String(value)],
+        ['average_solve_time_ms', 'Average solve time', formatDuration],
+    ];
+    container.replaceChildren();
+    const ns = 'http://www.w3.org/2000/svg';
+    const svgElement = (name, attrs) => {
+        const element = document.createElementNS(ns, name);
+        for (const [key, value] of Object.entries(attrs)) element.setAttribute(key, value);
+        return element;
+    };
+    for (const [key, label, format] of metrics) {
+        const card = document.createElement('article');
+        card.className = 'progress-card';
+        const heading = document.createElement('h4');
+        heading.textContent = label;
+        card.append(heading);
+        const points = rows.filter(row => row[key] !== null && Number.isFinite(row[key]));
+        if (!points.length) {
+            const empty = document.createElement('p');
+            empty.className = 'chart-empty';
+            empty.textContent = 'No data in this range';
+            card.append(empty);
+        } else {
+            const values = points.map(row => row[key]);
+            const low = Math.max(0, Math.min(...values) - (key.endsWith('_ms') ? 10000 : 50));
+            const high = Math.max(...values) + (key.endsWith('_ms') ? 10000 : 50);
+            const svg = svgElement('svg', { viewBox: '0 0 360 180', role: 'img', 'aria-label': `${label}, daily progression` });
+            for (const [value, y] of [[high, 22], [(high + low) / 2, 82], [low, 142]]) {
+                svg.append(svgElement('line', { x1: 54, x2: 348, y1: y, y2: y, class: 'chart-grid' }));
+                const text = svgElement('text', { x: 46, y: y + 4, 'text-anchor': 'end' });
+                text.textContent = format(Math.round(value));
+                svg.append(text);
+            }
+            const coords = points.map(row => [
+                54 + (Date.parse(`${row.date}T00:00:00Z`) - start.getTime()) / Math.max(86400000, endTime - start.getTime()) * 294,
+                142 - (row[key] - low) / (high - low) * 120,
+            ]);
+            svg.append(svgElement('polyline', { points: coords.map(p => p.join(',')).join(' '), class: 'chart-line' }));
+            points.forEach((row, index) => {
+                const dot = svgElement('circle', { cx: coords[index][0], cy: coords[index][1], r: 3, class: 'chart-point', tabindex: '0' });
+                const title = svgElement('title', {});
+                title.textContent = `${row.date}: ${format(row[key])}`;
+                dot.append(title);
+                dot.setAttribute('aria-label', title.textContent);
+                svg.append(dot);
+            });
+            for (const [timestamp, x, anchor] of [[start.getTime(), 54, 'start'], [endTime, 348, 'end']]) {
+                const text = svgElement('text', { x, y: 170, 'text-anchor': anchor });
+                text.textContent = new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit', timeZone: 'UTC' });
+                svg.append(text);
+            }
+            card.append(svg);
+        }
+        container.append(card);
     }
-  }
 }
+
+document.querySelectorAll('[data-days]').forEach(button => {
+    button.addEventListener('click', () => {
+        rangeDays = button.dataset.days;
+        document.querySelectorAll('[data-days]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+        renderProgress();
+    });
+});
 
 function makePuzzleCard(entry) {
   const link = document.createElement('a');
@@ -358,7 +406,8 @@ async function loadHistory() {
     }
     if (!response.ok) throw new Error(`Request failed (${response.status})`);
     const payload = await response.json();
-    displayStats(payload.stats);
+    progress = payload.progress || [];
+    renderProgress();
 
     if (!payload.history.length) {
       statusEl.textContent = payload.sessions?.length

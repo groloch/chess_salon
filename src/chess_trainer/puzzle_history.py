@@ -638,6 +638,31 @@ class PuzzleHistoryStore:
             rows = connection.execute(query, params).fetchall()
         return [self._entry(row) for row in rows]
 
+    def get_progress(self, user_id: str) -> list[dict]:
+        """Daily progression over the full history, independent of the card limit."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT rating, success, duration_ms, completed_at FROM puzzle_attempts "
+                "WHERE user_id = ? AND outcome != 'expired' ORDER BY completed_at, id",
+                [user_id],
+            ).fetchall()
+        days: dict[str, list] = {}
+        for row in rows:
+            day = self._utc(datetime.fromisoformat(row['completed_at'])).date().isoformat()
+            days.setdefault(day, []).append(row)
+        progress = []
+        for day, attempts in sorted(days.items()):
+            durations = [r['duration_ms'] for r in attempts if r['duration_ms'] is not None]
+            progress.append({
+                'date': day,
+                'performance_rating': self._performance_rating(
+                    [(r['rating'], bool(r['success'])) for r in attempts]
+                ),
+                'average_rating': round(sum(r['rating'] for r in attempts) / len(attempts)),
+                'average_solve_time_ms': round(sum(durations) / len(durations)) if durations else None,
+            })
+        return progress
+
     @staticmethod
     def _rate(successes: int, total: int) -> float:
         return round(successes * 100 / total, 1) if total else 0

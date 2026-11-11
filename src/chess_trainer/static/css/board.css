@@ -23,7 +23,7 @@
   width: 240px;
   height: 720px;
   background: var(--surface);
-  border: 1px solid #333;
+  border: 1px solid var(--border);
   border-radius: 6px;
   overflow-y: auto;
   padding: .6rem;
@@ -37,7 +37,7 @@
   align-items: baseline;
 }
 #movelist .move-number {
-  color: #777;
+  color: var(--text-subtle);
   min-width: 2.2rem;
   text-align: right;
   margin-right: .3rem;
@@ -79,7 +79,7 @@
 #fen-input {
   width: 480px;
   padding: .4rem .6rem;
-  border: 1px solid #555;
+  border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--surface);
   color: var(--text);

@@ -162,6 +162,34 @@ class PuzzleHistoryStoreTests(unittest.TestCase):
         )
         self.assertEqual(len(self.store.get_history()), 1)
 
+    def test_daily_progress_is_scoped_and_uses_all_attempts(self):
+        base = datetime(2025, 1, 1, 12, tzinfo=timezone.utc)
+        for index in range(502):
+            self.store.record_attempt(
+                puzzle_id=f'progress-{index}', rating=1500, success=index % 2 == 0,
+                fen='fen', orientation='white', moves=[], user_id='owner',
+                completed_at=base, duration_ms=10000 if index % 2 == 0 else 30000,
+            )
+        self.store.record_attempt(
+            puzzle_id='next-day', rating=1600, success=True,
+            fen='fen', orientation='white', moves=[], user_id='owner',
+            completed_at=base + timedelta(days=1),
+        )
+        self.store.record_attempt(
+            puzzle_id='other-user', rating=2500, success=True,
+            fen='fen', orientation='white', moves=[], user_id='other',
+            completed_at=base,
+        )
+        progress = self.store.get_progress('owner')
+        self.assertEqual(len(self.store.get_history(user_id='owner')), 500)
+        self.assertEqual(progress[0], {
+            'date': '2025-01-01', 'performance_rating': 1500,
+            'average_rating': 1500, 'average_solve_time_ms': 20000,
+        })
+        self.assertEqual(progress[1]['date'], '2025-01-02')
+        self.assertIsNone(progress[1]['average_solve_time_ms'])
+        self.assertEqual(self.store.get_progress('unknown'), [])
+
     def test_performance_and_solve_time_stats(self):
         base = datetime.now(timezone.utc)
         self.store.record_attempt(

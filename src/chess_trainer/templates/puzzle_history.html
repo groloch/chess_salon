@@ -13,22 +13,23 @@
 <section class="history-dashboard" aria-labelledby="history-title">
   <div class="history-heading">
     <div>
-      <p class="eyebrow">BLINDFOLD TRAINING</p>
-      <h2 id="history-title">Puzzle history</h2>
-      <p class="history-intro">Your training at a glance. Select a board to revisit its Lichess puzzle.</p>
+      <h2 id="history-title">Blindfold puzzles</h2>
     </div>
     <button id="open-puzzle-settings" class="start-puzzle-button" type="button">Start training <span aria-hidden="true">→</span></button>
   </div>
 
-  <section class="stats-grid" id="puzzle-stats" aria-label="Puzzle statistics">
-    <article class="stat-card"><span class="stat-label">Solved</span><strong data-stat="successes">—</strong><span class="stat-foot">of <span data-stat="completed">—</span> attempts</span></article>
-    <article class="stat-card"><span class="stat-label">Success rate</span><strong data-stat="success_rate">—</strong><span class="stat-foot">last 20: <span data-stat="recent_success_rate">—</span> <span id="recent-trend" class="stat-trend"></span></span></article>
-    <article class="stat-card"><span class="stat-label">Performance rating</span><strong data-stat="performance_rating">—</strong><span class="stat-foot">best solved <span data-stat="highest_rated_solved">—</span></span></article>
-    <article class="stat-card"><span class="stat-label">Average rating</span><strong data-stat="average_rating">—</strong><span class="stat-foot">hardest <span data-stat="hardest_rating">—</span></span></article>
-    <article class="stat-card"><span class="stat-label">Current streak</span><strong data-stat="current_streak">—</strong><span class="stat-foot">best <span data-stat="best_streak">—</span></span></article>
-    <article class="stat-card"><span class="stat-label">Average solve time</span><strong data-stat="average_solve_time_ms">—</strong><span class="stat-foot">fastest <span data-stat="fastest_solve_ms">—</span></span></article>
-    <article class="stat-card"><span class="stat-label">White / Black</span><strong><span data-stat="white_success_rate">—</span> / <span data-stat="black_success_rate">—</span></strong><span class="stat-foot"><span data-stat="white_successes">—</span> W · <span data-stat="black_successes">—</span> B solved</span></article>
-    <article class="stat-card"><span class="stat-label">Last 7 days</span><strong data-stat="puzzles_last_7_days">—</strong><span class="stat-foot"><span data-stat="active_days">—</span> active days · <span data-stat="current_day_streak">—</span> day streak</span></article>
+  <section class="progress-section" aria-label="Training progression">
+    <div class="progress-toolbar">
+      <h3>Progress</h3>
+      <div class="chart-ranges" role="group" aria-label="Progress time range">
+        <button type="button" data-days="7" aria-pressed="false">7 days</button>
+        <button type="button" data-days="30" aria-pressed="true">30 days</button>
+        <button type="button" data-days="90" aria-pressed="false">90 days</button>
+        <button type="button" data-days="all" aria-pressed="false">All time</button>
+      </div>
+    </div>
+    <div id="progress-charts" class="progress-charts" aria-live="polite"></div>
+    <p class="chart-note">Daily averages · performance estimated from each day's results · UTC</p>
   </section>
 
   <div id="history-status" class="history-status" role="status">Loading your puzzle history…</div>
@@ -41,7 +42,6 @@
   <form id="puzzle-settings-form">
     <div class="dialog-heading">
       <div>
-        <p class="eyebrow">MAKE IT YOURS</p>
         <h2 id="settings-title">Puzzle settings</h2>
       </div>
       <button id="close-puzzle-settings" class="dialog-close" type="button" aria-label="Close settings">×</button>

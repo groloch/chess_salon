@@ -274,6 +274,7 @@ class ChessApp:
             return self._sign_in_required()
         return jsonify(
             stats=self.puzzle_history.get_stats(user_id=user['id']),
+            progress=self.puzzle_history.get_progress(user_id=user['id']),
             history=self.puzzle_history.get_history(limit=500, user_id=user['id']),
             sessions=self.puzzle_history.get_sessions(user_id=user['id']),
         )
