@@ -315,7 +315,14 @@ async function startPuzzle(event) {
       body: JSON.stringify(payload),
     });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.error || 'Could not start a puzzle.');
+    if (!response.ok) {
+      if (result.error === 'sign_in_required') {
+        showSignInRequired(startError);
+      } else {
+        throw new Error(result.error || 'Could not start a puzzle.');
+      }
+      return;
+    }
     saveMix();
     window.location.assign(result.redirect_url);
   } catch (error) {
@@ -326,9 +333,29 @@ async function startPuzzle(event) {
   }
 }
 
+function showSignInRequired(element) {
+  element.textContent = '';
+  const link = document.createElement('a');
+  link.href = '/auth/login';
+  link.textContent = 'Sign in with Lichess to start training.';
+  element.appendChild(link);
+  element.hidden = false;
+  startButton.disabled = false;
+  startButton.textContent = 'Start training';
+}
+
 async function loadHistory() {
   try {
     const response = await fetch('/api/puzzles/history');
+    if (response.status === 401) {
+      statusEl.classList.remove('error');
+      statusEl.textContent = '';
+      const link = document.createElement('a');
+      link.href = '/auth/login';
+      link.textContent = 'Sign in with Lichess to see your puzzle history and start training.';
+      statusEl.appendChild(link);
+      return;
+    }
     if (!response.ok) throw new Error(`Request failed (${response.status})`);
     const payload = await response.json();
     displayStats(payload.stats);

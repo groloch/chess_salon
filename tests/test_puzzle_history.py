@@ -346,11 +346,17 @@ class PuzzleHistoryStoreTests(unittest.TestCase):
 class PuzzleStartApiTests(unittest.TestCase):
     def setUp(self):
         self.tempdir = tempfile.TemporaryDirectory()
-        self.app_wrapper = ChessApp()
-        self.app_wrapper.puzzle_history = PuzzleHistoryStore(
-            Path(self.tempdir.name) / 'history.sqlite3'
+        root = Path(self.tempdir.name)
+        self.app_wrapper = ChessApp(
+            env_path=str(root / '.env'),
+            database_path=str(root / 'history.sqlite3'),
+        )
+        self.user = self.app_wrapper.user_store.save_lichess_account(
+            lichess_id='tester-1', username='Tester', access_token='test-token',
         )
         self.client = self.app_wrapper.app.test_client()
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = self.user['id']
 
     def tearDown(self):
         self.tempdir.cleanup()
@@ -406,7 +412,7 @@ class PuzzleStartApiTests(unittest.TestCase):
         self.assertEqual(response.json['profile'], {
             'difficulties': ['harder'], 'depth_min': 12, 'depth_max': 12,
         })
-        board = self.app_wrapper._boards['puzzles']
+        board = self.app_wrapper._boards[(self.user['id'], 'puzzles')]
         self.assertEqual(board.kwargs['mix'], PuzzleMix.fixed('harder', 12))
         self.assertIs(board.kwargs['history_store'], self.app_wrapper.puzzle_history)
 
@@ -427,12 +433,12 @@ class PuzzleStartApiTests(unittest.TestCase):
                 'timed': True, 'duration_minutes': 30,
             })
         session_id = start.json['session']['id']
-        self.assertEqual(self.app_wrapper._boards['puzzles'].session_id, session_id)
+        self.assertEqual(self.app_wrapper._boards[(self.user['id'], 'puzzles')].session_id, session_id)
 
         response = self.client.post(f'/api/puzzles/session/{session_id}/detach')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json['session']['status'], 'completed')
-        self.assertIsNone(self.app_wrapper._boards['puzzles'].session_id)
+        self.assertIsNone(self.app_wrapper._boards[(self.user['id'], 'puzzles')].session_id)
         self.assertEqual(self.app_wrapper.puzzle_history.get_history(), [])
 
 

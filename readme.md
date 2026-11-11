@@ -6,31 +6,38 @@ A local web app for blindfold puzzle training.
 
 - **Analysis board** (`/analysis`)
 - **Blindfold puzzles** (`/blind_puzzles`, `/blind_puzzles/play`): fetch Lichess puzzles, hide the last N plies of the game, and play the solution from the resulting position. Puzzles are sampled from a configurable mix of difficulties and blindfold depths.
+- **Sign in with Lichess**: each user links their own Lichess account via OAuth2 (Authorization Code + PKCE). Puzzle training and history are per-user; the analysis board works without signing in.
 
 ## Requirements
 
-- Python 3.12
+- Python 3.12+
 - Node.js 18+
-- A Lichess API token with puzzle:read and puzzle:write permissions.
+- A Lichess OAuth app (see below) with the `puzzle:read` and `puzzle:write` scopes.
 
 ## Setup
 
 On linux : (for windows user the env activation is different)
 ```bash
-python3 -m venv .venv_chsl
-source .venv_chsl/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Add your lichess token to `.env`:
+Choose a unique client id for this app and add it to `.env`. Lichess supports
+public OAuth clients without registration. The default redirect URI is
+`http://localhost:23777/auth/callback`, with scopes `puzzle:read puzzle:write`
+(read puzzle activity + solve puzzles).
 
 ```dotenv
-LICHESS_TOKEN=your_token_here
+LICHESS_CLIENT_ID=your_client_id_here
+# LICHESS_REDIRECT_URI=http://localhost:23777/auth/callback
+# LICHESS_SCOPES=puzzle:read puzzle:write
 ```
 
-You lichess token needs to have the following rights:
-- Read puzzle activity: `puzzle:read`
-- Solve puzzles: `puzzle:write`
+`SECRET_KEY` (session signing) and `TOKEN_ENCRYPTION_KEY` (encrypting Lichess
+access tokens at rest) are generated automatically into `.env` on first run.
+`LICHESS_TOKEN` is no longer used by the web app; it is only read by the
+standalone board CLI (`python -m chess_trainer.boards`).
 
 ## Run
 

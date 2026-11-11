@@ -1,4 +1,4 @@
-"""SQLite persistence and statistics for completed blindfold puzzles/sessions."""
+"""SQLite persistence for users, completed blindfold puzzles, and sessions."""
 
 from __future__ import annotations
 
@@ -124,6 +124,34 @@ def _migration_7_attempt_mix(connection: sqlite3.Connection) -> None:
     _add_column_if_missing(connection, 'puzzle_attempts', 'blindfold_depth', 'INTEGER')
 
 
+def _migration_8_user_accounts(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            lichess_id TEXT NOT NULL UNIQUE,
+            username TEXT NOT NULL,
+            access_token TEXT NOT NULL,
+            token_type TEXT NOT NULL DEFAULT 'Bearer',
+            expires_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            last_seen_at TEXT
+        )
+        """
+    )
+    _add_column_if_missing(connection, 'puzzle_attempts', 'user_id', 'TEXT')
+    _add_column_if_missing(connection, 'puzzle_sessions', 'user_id', 'TEXT')
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS puzzle_attempts_user "
+        "ON puzzle_attempts (user_id, completed_at DESC, id DESC)"
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS puzzle_sessions_user "
+        "ON puzzle_sessions (user_id, started_at DESC)"
+    )
+
+
 MIGRATIONS = {
     1: _migration_1_initial_schema,
     2: _migration_2_attempt_sessions,
@@ -132,9 +160,20 @@ MIGRATIONS = {
     5: _migration_5_session_state,
     6: _migration_6_session_profile,
     7: _migration_7_attempt_mix,
+    8: _migration_8_user_accounts,
 }
 
 SCHEMA_VERSION = max(MIGRATIONS)
+
+
+def run_migrations(connection: sqlite3.Connection) -> None:
+    """Apply any pending schema migrations tracked in ``user_version``."""
+    current_version = connection.execute('PRAGMA user_version').fetchone()[0]
+    for version in sorted(MIGRATIONS):
+        if version <= current_version:
+            continue
+        MIGRATIONS[version](connection)
+        connection.execute(f'PRAGMA user_version = {int(version)}')
 
 
 class PuzzleHistoryStore:
@@ -163,13 +202,7 @@ class PuzzleHistoryStore:
 
     @staticmethod
     def _migrate(connection: sqlite3.Connection) -> None:
-        """Apply any pending schema migrations tracked in ``user_version``."""
-        current_version = connection.execute('PRAGMA user_version').fetchone()[0]
-        for version in sorted(MIGRATIONS):
-            if version <= current_version:
-                continue
-            MIGRATIONS[version](connection)
-            connection.execute(f'PRAGMA user_version = {int(version)}')
+        run_migrations(connection)
 
     @property
     def schema_version(self) -> int:
@@ -216,17 +249,18 @@ class PuzzleHistoryStore:
         duration_ms: int | None = None,
         mode: str | None = None,
         blindfold_depth: int | None = None,
+        user_id: str | None = None,
     ) -> int:
         cursor = connection.execute(
             """
             INSERT INTO puzzle_attempts
-                (completed_at, puzzle_id, rating, success, fen, orientation, moves_json, session_id, outcome, duration_ms, mode, blindfold_depth)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (completed_at, puzzle_id, rating, success, fen, orientation, moves_json, session_id, outcome, duration_ms, mode, blindfold_depth, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 completed_at, puzzle_id, int(rating), int(outcome == 'success'), fen,
                 orientation, json.dumps(moves), session_id, outcome, duration_ms,
-                mode, blindfold_depth,
+                mode, blindfold_depth, user_id,
             ),
         )
         return int(cursor.lastrowid)
@@ -245,6 +279,7 @@ class PuzzleHistoryStore:
         duration_ms: int | None = None,
         mode: str | None = None,
         blindfold_depth: int | None = None,
+        user_id: str | None = None,
     ) -> int | None:
         timestamp_value = self._utc(completed_at)
         timestamp = timestamp_value.isoformat()
@@ -270,6 +305,7 @@ class PuzzleHistoryStore:
                             session_id=session_id,
                             mode=session['current_mode'],
                             blindfold_depth=session['current_blindfold_depth'],
+                            user_id=session['user_id'],
                         )
                         connection.execute(
                             "UPDATE puzzle_sessions SET status = 'expired', ended_at = ends_at, "
@@ -299,6 +335,7 @@ class PuzzleHistoryStore:
                 duration_ms=duration_ms,
                 mode=mode,
                 blindfold_depth=blindfold_depth,
+                user_id=user_id,
             )
             if session_id is not None:
                 connection.execute(
@@ -318,6 +355,7 @@ class PuzzleHistoryStore:
         mode: str = 'easiest',
         blindfold_depth: int = 9,
         started_at: datetime | None = None,
+        user_id: str | None = None,
     ) -> dict:
         started = self._utc(started_at)
         ends = started + timedelta(minutes=duration_minutes)
@@ -335,11 +373,11 @@ class PuzzleHistoryStore:
         with self._connect() as connection:
             connection.execute(
                 "INSERT INTO puzzle_sessions "
-                "(id, started_at, ends_at, duration_seconds, status, mode, blindfold_depth, profile_json) "
-                "VALUES (?, ?, ?, ?, 'active', ?, ?, ?)",
+                "(id, started_at, ends_at, duration_seconds, status, mode, blindfold_depth, profile_json, user_id) "
+                "VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?)",
                 (
                     session_id, started.isoformat(), ends.isoformat(), duration_minutes * 60,
-                    mode, blindfold_depth, profile_json,
+                    mode, blindfold_depth, profile_json, user_id,
                 ),
             )
         return self.get_session(session_id)
@@ -400,6 +438,7 @@ class PuzzleHistoryStore:
                         session_id=session_id,
                         mode=session['current_mode'],
                         blindfold_depth=session['current_blindfold_depth'],
+                        user_id=session['user_id'],
                     )
                     connection.execute(
                         'UPDATE puzzle_sessions SET expired_count = expired_count + 1, '
@@ -442,6 +481,7 @@ class PuzzleHistoryStore:
                         session_id=session_id,
                         mode=session['current_mode'],
                         blindfold_depth=session['current_blindfold_depth'],
+                        user_id=session['user_id'],
                     )
                     connection.execute(
                         'UPDATE puzzle_sessions SET expired_count = expired_count + 1 WHERE id = ?',
@@ -501,6 +541,7 @@ class PuzzleHistoryStore:
             'profile': profile,
             'active_mode': row['current_mode'],
             'active_blindfold_depth': row['current_blindfold_depth'],
+            'user_id': row['user_id'],
         }
 
     def get_session(self, session_id: str) -> dict | None:
@@ -550,14 +591,18 @@ class PuzzleHistoryStore:
             ).fetchone()
             return self._session_entry(session)
 
-    def get_sessions(self, limit: int = 500) -> list[dict]:
+    def get_sessions(self, limit: int = 500, user_id: str | None = None) -> list[dict]:
         self.expire_due_sessions()
         limit = max(1, min(int(limit), 500))
+        query = "SELECT * FROM puzzle_sessions WHERE status != 'active'"
+        params: list = []
+        if user_id is not None:
+            query += ' AND user_id = ?'
+            params.append(user_id)
+        query += ' ORDER BY started_at DESC LIMIT ?'
+        params.append(limit)
         with self._connect() as connection:
-            rows = connection.execute(
-                "SELECT * FROM puzzle_sessions WHERE status != 'active' "
-                'ORDER BY started_at DESC LIMIT ?', (limit,)
-            ).fetchall()
+            rows = connection.execute(query, params).fetchall()
         return [self._session_entry(row) for row in rows]
 
     @staticmethod
@@ -576,17 +621,21 @@ class PuzzleHistoryStore:
             'duration_ms': row['duration_ms'],
             'mode': row['mode'],
             'blindfold_depth': row['blindfold_depth'],
+            'user_id': row['user_id'],
         }
 
-    def get_history(self, limit: int = 500) -> list[dict]:
+    def get_history(self, limit: int = 500, user_id: str | None = None) -> list[dict]:
         self.expire_due_sessions()
         limit = max(1, min(int(limit), 500))
+        query = 'SELECT * FROM puzzle_attempts'
+        params: list = []
+        if user_id is not None:
+            query += ' WHERE user_id = ?'
+            params.append(user_id)
+        query += ' ORDER BY completed_at DESC, id DESC LIMIT ?'
+        params.append(limit)
         with self._connect() as connection:
-            rows = connection.execute(
-                "SELECT * FROM puzzle_attempts "
-                "ORDER BY completed_at DESC, id DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
+            rows = connection.execute(query, params).fetchall()
         return [self._entry(row) for row in rows]
 
     @staticmethod
@@ -622,20 +671,32 @@ class PuzzleHistoryStore:
                 low = mid
         return round((low + high) / 2)
 
-    def get_stats(self) -> dict:
+    def get_stats(self, user_id: str | None = None) -> dict:
         self.expire_due_sessions()
+        attempt_filter = ''
+        session_filter = ''
+        params: list = []
+        if user_id is not None:
+            attempt_filter = ' AND user_id = ?'
+            session_filter = ' AND user_id = ?'
+            params = [user_id, user_id, user_id]
         with self._connect() as connection:
             rows = connection.execute(
                 "SELECT rating, success, orientation, completed_at, duration_ms "
-                "FROM puzzle_attempts WHERE outcome != 'expired' "
-                "ORDER BY completed_at DESC, id DESC"
+                "FROM puzzle_attempts WHERE outcome != 'expired'"
+                f"{attempt_filter} "
+                "ORDER BY completed_at DESC, id DESC",
+                params[:1],
             ).fetchall()
             expired = connection.execute(
                 "SELECT COUNT(*) FROM puzzle_attempts WHERE outcome = 'expired'"
+                f"{attempt_filter}",
+                params[1:2],
             ).fetchone()[0]
             best_session = connection.execute(
                 "SELECT COALESCE(MAX(successes), 0) FROM puzzle_sessions "
-                "WHERE status != 'active'"
+                f"WHERE status != 'active'{session_filter}",
+                params[2:3],
             ).fetchone()[0]
 
         total = len(rows)

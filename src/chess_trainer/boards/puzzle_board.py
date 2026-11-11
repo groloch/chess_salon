@@ -25,6 +25,7 @@ class BlindfoldPuzzleChessBoard(ChessBoard):
             mix: PuzzleMix | None = None,
             history_store=None,
             session_id: str | None = None,
+            user_id: str | None = None,
             **kwargs):
         super().__init__()
 
@@ -35,6 +36,7 @@ class BlindfoldPuzzleChessBoard(ChessBoard):
         self.current_blindfold_depth = self.mix.depth_min
         self.history_store = history_store
         self.session_id = session_id
+        self.user_id = user_id
 
         self.puzzle_started_at: datetime | None = None
         self.solution, self.rating, self.current_puzzle_id = self.fetch_next_puzzle()
@@ -117,6 +119,7 @@ class BlindfoldPuzzleChessBoard(ChessBoard):
             duration_ms=duration_ms,
             mode=self.current_mode,
             blindfold_depth=self.current_blindfold_depth,
+            user_id=self.user_id,
         )
 
     def is_correct(self, uci_move: str) -> bool:

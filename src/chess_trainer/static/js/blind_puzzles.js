@@ -142,7 +142,34 @@ if (sessionId) {
     if (finishTrainingButton) finishTrainingButton.addEventListener('click', finishTraining);
 }
 
-initBoard({
+async function requireSignIn() {
+    try {
+        const response = await fetch('/api/me');
+        if (response.ok) {
+            const { user } = await response.json();
+            if (user) return true;
+        }
+    } catch {
+        // Fall through to the sign-in prompt.
+    }
+    const boardEl = document.getElementById('board');
+    if (boardEl) {
+        boardEl.replaceChildren();
+        const prompt = document.createElement('div');
+        prompt.style.padding = '2rem';
+        prompt.style.textAlign = 'center';
+        const link = document.createElement('a');
+        link.href = '/auth/login';
+        link.textContent = 'Sign in with Lichess to train blindfold puzzles.';
+        prompt.appendChild(link);
+        boardEl.appendChild(prompt);
+    }
+    return false;
+}
+
+requireSignIn().then((signedIn) => {
+    if (!signedIn) return;
+    initBoard({
     enableKeyboard: false,
     enableScroll: false,
     boardId: 'puzzles',
@@ -182,4 +209,5 @@ initBoard({
         if (position.session_expired) expireSession();
         else syncBoard(position);
     });
+});
 });

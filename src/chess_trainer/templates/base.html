@@ -36,6 +36,29 @@
       transition: background .2s;
     }
     header nav a:hover { background: var(--primary); }
+    header .auth-widget {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      font-size: .95rem;
+    }
+    header .auth-widget a.auth-signin {
+      color: #fff;
+      background: var(--accent);
+      text-decoration: none;
+      padding: .45rem .9rem;
+      border-radius: 4px;
+    }
+    header .auth-widget .auth-username { color: var(--text); font-weight: 600; }
+    header .auth-widget button.auth-logout {
+      background: var(--primary);
+      color: var(--text);
+      border: none;
+      padding: .45rem .9rem;
+      border-radius: 4px;
+      cursor: pointer;
+    }
     main { padding: 2rem; }
   </style>
   {% block head %}{% endblock %}
@@ -49,9 +72,11 @@
       <a href="/blind_puzzles">Blindfold Puzzles</a>
       <a href="/openings">Openings Trainer</a>
     </nav>
+    <div id="auth-widget" class="auth-widget"></div>
   </header>
   <main>
     {% block content %}{% endblock %}
   </main>
+  <script src="/static/js/auth.js" type="module"></script>
 </body>
 </html>
